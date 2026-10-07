@@ -15,6 +15,7 @@ require (
 	github.com/gorilla/mux v1.8.1
 	github.com/gorilla/websocket v1.5.3
 	github.com/oklog/ulid/v2 v2.1.2
+	github.com/spf13/cobra v1.8.1
 	golang.org/x/exp v0.0.0-20230202154922-04ff78cf6831
 	golang.org/x/mod v0.12.0
 	google.golang.org/grpc v1.56.3
@@ -29,7 +30,6 @@ require (
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 // indirect
 	github.com/mattn/go-isatty v0.0.16 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
-	github.com/spf13/cobra v1.8.1 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	golang.org/x/net v0.11.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
