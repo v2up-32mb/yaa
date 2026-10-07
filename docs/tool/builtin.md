@@ -211,3 +211,38 @@ func validatePath(path string, allowed, blocked []string) (string, error) {
 ```
 
 所有 configured roots 必须是绝对路径，并在启动时通过同一 `canonicalPath` 解析；失败即配置错误。每次操作只使用返回的 canonical target，不能在校验后重新使用原始 path。`filepath.Rel` 提供目录边界，因此 `/tmpfoo` 不属于 `/tmp`；解析最近已有祖先则同时覆盖 symlink escape 和新建文件场景。
+
+### 6.4 file_search（mcp-tools 互补）
+
+子串或正则全文搜索，对齐 mcp-tools `fs_search_text` 能力：
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `path` | string | 必填；文件或目录，相对路径基于 `allowed_paths[0]` |
+| `query` | string | 必填；子串，或 `regex=true` 时的 Go 正则 |
+| `regex` | bool | 编译失败返回 `invalid regex` |
+| `use_gitignore` | bool | 默认 true；读取根目录 `.gitignore`（精确路径 / `*` / `**/` 前缀 / 尾部 `/`；`!` 取反、`?`、`[abc]` 不支持） |
+| `limit` | int | 1..1000，默认取自 `max_matches`（200） |
+
+Config（`tools.builtin.file_search.*`）：`allowed_paths` / `blocked_paths`（复用 file 策略，`validatePath` 同源）、`max_matches`、`max_line_bytes`、`enable_gitignore`。**只读**，默认启用。
+
+### 6.5 git_*（mcp-tools 互补）
+
+`git_status` / `git_diff` / `git_log` / `git_branch` / `git_add` / `git_restore` / `git_commit` / `git_switch` / `git_pull`，对齐 mcp-tools `git.*` 白名单设计：
+
+- 只允许上述固定子命令；`push` / `rebase` / 任意透传**不在白名单**（构造期即无该工具）
+- 参数形态固定、无 shell；`repo_path` 基于 `allowed_paths` 校验
+- 防注入：`message` / `branch` 拒绝 `-` 开头；`paths` 拒绝 `-` 开头；`restore` 显式加 `--`
+- `commit` 用单 `-m` 参数传消息；`pull` 仅 `--ff-only`；`log` 限 `-n ≤100`
+- Config（`tools.builtin.git.*`）：`allowed_paths`/`blocked_paths`、`allowed_subcommands`（覆盖默认白名单）、`max_output_bytes`
+- 输出 ≤128KB 截断；非零退出 `IsError=true`
+
+### 6.6 process_*（mcp-tools 互补）
+
+`process_start` / `process_list` / `process_logs` / `process_stop`：后台进程管理。
+
+- **默认禁用**：`tools.builtin.process.enabled` 必须显式 `true`（进程脱离 turn 生命周期长期运行）
+- `process_start`：异步启动，立即返回 `id=proc_N pid=…`；stdout/stderr 独立缓冲（≤`max_output_bytes`）
+- `process_stop`：进程树终止——Unix 先进程组 `SIGTERM`，5s 宽限期后 `SIGKILL`；Windows `taskkill /T`（`force=true` 加 `/F`）
+- `process_list` / `process_logs`：按 `id` 查询
+- 平台差异收敛在 `process_unix.go` / `process_windows.go`

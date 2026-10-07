@@ -83,7 +83,7 @@ agents:
     provider: my-gateway         # 引用上面 providers 的 id
     model: gpt-4o-mini
     system_prompt: "你是一个运行在 Windows 7 上的本地 AI 助手，使用中文回答。"
-    tools: [shell, file_read, file_write, file_list, http, config_query, runtime_status, tool_list, skill_list, provider_list, session_list]
+    tools: [shell, file_read, file_write, file_list, file_search, git_status, git_diff, git_log, http, config_query, runtime_status, tool_list, skill_list, provider_list, session_list]
     skills: []
     temperature: 0.3
     planner:
@@ -111,7 +111,29 @@ tools:
   file:
     enabled: true
     timeout: 30s
-    options: {}
+    options:
+      # allowed_paths: ["C:/workspace"]          # 留空 = 不限制目录
+      max_file_size: 10MB
+  file_search:
+    enabled: true
+    timeout: 30s
+    options:
+      # 子串/正则全文搜索，默认 .gitignore 过滤，命中上限 200
+      allowed_paths: []
+      blocked_paths: []
+      max_matches: 200
+      enable_gitignore: true
+  git:
+    enabled: true            # git_status/diff/log/branch/add/restore/commit/switch/pull
+    timeout: 60s
+    options:
+      allowed_paths: []
+      # allowed_subcommands: [status, diff, log, add, commit]   # 留空 = 默认白名单（无 push）
+  process:
+    enabled: false           # 后台进程管理，默认关闭；需显式开启
+    timeout: 30s
+    options:
+      max_output_bytes: 262144
   config_query:
     enabled: true
   config_reload:

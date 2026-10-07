@@ -126,12 +126,19 @@ func assertDefaultBuiltinConfig(t *testing.T, tools ToolsConfig) {
 		tools.MaxConcurrentPerSession != 3 || tools.DefaultMaxRetry != 1 || tools.MaxResultTokens != 4000 {
 		t.Fatalf("tools scalar defaults = %#v", tools)
 	}
-	wantKeys := []string{"shell", "http", "file", "config_query", "config_reload", "runtime_status", "agent_list", "agent_inspect", "session_list", "session_inspect", "tool_list", "skill_list", "provider_list", "mcp_list"}
+	wantKeys := []string{"shell", "http", "file", "file_search", "config_query", "config_reload", "runtime_status", "agent_list", "agent_inspect", "session_list", "session_inspect", "tool_list", "skill_list", "provider_list", "mcp_list", "git", "process"}
 	if len(tools.Builtin) != len(wantKeys) {
 		t.Fatalf("builtin keys = %d, want %d", len(tools.Builtin), len(wantKeys))
 	}
+	// process 系列默认禁用（安全设计）：spawn 后台进程且脱离 turn 生命周期。
 	for _, key := range wantKeys {
 		item, ok := tools.Builtin[key]
+		if key == "process" {
+			if !ok || item.Enabled || item.Options == nil {
+				t.Errorf("builtin[%q] = %#v, want disabled (default off) with non-nil options", key, item)
+			}
+			continue
+		}
 		if !ok || !item.Enabled || item.Options == nil {
 			t.Errorf("builtin[%q] = %#v, want enabled with non-nil options", key, item)
 		}

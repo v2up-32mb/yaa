@@ -3821,3 +3821,17 @@ plugin 52/52, session 58/58, skill 24/24, storage 23/23, tool 45/45
 - 流式对话：queued→assistant_start→reasoning_delta→assistant_delta→assistant_done 全部帧渲染
 - 工具调用：tool_call→tool_result→第二轮→assistant_done，工具卡片与错误状态正确
 - 无头 Chromium CDP 实测：新建会话/输入/发送/流式/推理块/工具卡片/Markdown 渲染 0 报错
+
+---
+
+## #75 — 工具集互补：内置 file_search / git_* / process_*（吸收 mcp-tools 强项）
+
+### 变更
+- `file_search`（对齐 mcp-tools fs_search_text）：子串/正则全文搜索 + .gitignore 过滤 + 命中上限；路径安全复用 file 的 allowed_paths/blocked_paths；只读、默认启用
+- `git_*`（对齐 mcp-tools git.*）：status/diff/log/branch/add/restore/commit/switch/pull 白名单，无 shell、禁 push、flag 注入拒绝（message/branch/paths 拒绝 `-` 开头）、commit 单 `-m`、pull 仅 ff-only、restore 显式 `--`
+- `process_*`（对齐 mcp-tools exec 进程管理）：start/list/logs/stop，进程树终止（Unix 组 SIGTERM→SIGKILL，Windows taskkill /T[/F]），默认禁用（需显式 tools.builtin.process.enabled）
+- register.go 容器模式扩展（file/git/process 共享配置容器）；defaults/config 验证联动；示例配置与 docs/tool/builtin.md 补充
+
+### 验证
+- 新增 11 个用例（search 6 / git 3 / process 2）全过；go vet + 全量 go test 全绿
+- Windows 交叉编译 + 交叉 vet 通过

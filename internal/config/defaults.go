@@ -116,13 +116,42 @@ func DefaultMCPConfig() MCPConfig {
 }
 
 func DefaultToolsConfig() ToolsConfig {
-	builtin := make(map[string]ToolConfig, 14)
+	builtin := make(map[string]ToolConfig, 21)
 	for _, name := range []string{
-		"shell", "http", "file", "config_query", "config_reload", "runtime_status",
+		"shell", "http", "file", "file_search", "config_query", "config_reload", "runtime_status",
 		"agent_list", "agent_inspect", "session_list", "session_inspect", "tool_list",
 		"skill_list", "provider_list", "mcp_list",
 	} {
 		builtin[name] = ToolConfig{Enabled: true, Options: map[string]any{}}
+	}
+	// git_* 系列默认启用，但仅开放白名单子命令。
+	builtin["git"] = ToolConfig{
+		Enabled: true,
+		Timeout: 60 * time.Second,
+		Options: map[string]any{
+			"allowed_paths":    []string{},
+			"blocked_paths":    []string{},
+			"max_output_bytes": 131072,
+		},
+	}
+	// 后台进程管理默认关闭：process_start 会脱离 turn 生命周期长期运行。
+	builtin["process"] = ToolConfig{
+		Enabled: false,
+		Timeout: 30 * time.Second,
+		Options: map[string]any{
+			"max_output_bytes": 262144,
+		},
+	}
+	builtin["file_search"] = ToolConfig{
+		Enabled: true,
+		Timeout: 30 * time.Second,
+		Options: map[string]any{
+			"allowed_paths":    []string{},
+			"blocked_paths":    []string{},
+			"max_matches":      200,
+			"max_line_bytes":   16384,
+			"enable_gitignore": true,
+		},
 	}
 	builtin["shell"] = ToolConfig{
 		Enabled: true,

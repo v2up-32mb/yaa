@@ -239,7 +239,7 @@ Provider、Tool、Skill、Prompt、权限等均应支持配置化。
 - Remote API：HTTP / WebSocket / SSE，统一 envelope，Auth（static token + JWT + RBAC）
 - Provider：openai（含 DeepSeek/Qwen 等 OpenAI 兼容网关）、claude、gemini、ollama
 - Agent 完整对话回路：流式 + 非流式、Tool loop（max_tool_rounds）、Planner（LLM plan + step 执行）
-- Tool：shell / http / file_read / file_write / file_list / file_delete / config_query / config_reload / introspection 系列
+- Tool：shell / http / file_read / file_write / file_list / file_delete / file_search（子串·正则·gitignore）/ git_status / git_diff / git_log / git_branch / git_add / git_restore / git_commit / git_switch / git_pull / process_start / process_list / process_logs / process_stop（默认关）/ config_query / config_reload / introspection 系列
 - Skill 系统、Session / Context（hybrid summarize）、Memory（SQLite + 可选向量）、原生 MCP 客户端/服务器、Plugin（gRPC RPC，Unix Socket / Windows loopback TCP）
 - 默认 Web UI（`http://127.0.0.1:8080`）
 
