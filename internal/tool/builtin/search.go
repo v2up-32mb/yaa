@@ -25,6 +25,7 @@ type SearchTool struct {
 type EffectiveSearchOptions struct {
 	AllowedPaths    []string
 	BlockedPaths    []string
+	BaseDir         string
 	MaxMatches      int
 	MaxLineBytes    int
 	EnableGitignore bool
@@ -33,9 +34,16 @@ type EffectiveSearchOptions struct {
 // NewSearch 构造 file_search 工具。
 func NewSearch(cfg config.ToolConfig) (*SearchTool, error) {
 	o := EffectiveSearchOptions{
+		BaseDir:         ".",
 		MaxMatches:      200,
 		MaxLineBytes:    16 * 1024,
 		EnableGitignore: true,
+	}
+	if bd, ok := cfg.Options["base_dir"].(string); ok && bd != "" {
+		o.BaseDir = bd
+	}
+	if abs, err := filepath.Abs(o.BaseDir); err == nil {
+		o.BaseDir = abs
 	}
 	if m, ok := asInt(cfg.Options["max_matches"]); ok && m > 0 {
 		o.MaxMatches = m
@@ -107,10 +115,13 @@ func (s *SearchTool) Execute(ctx context.Context, scope tool.ExecutionScope, par
 
 	root := rawPath
 	if !filepath.IsAbs(root) {
-		if len(s.opts.AllowedPaths) == 0 {
-			return tool.ToolResult{Content: "no allowed paths configured", IsError: true}, nil
+		if len(s.opts.AllowedPaths) > 0 {
+			// 相对路径基于首个 allowed root 解析（框定在允许目录内）
+			root = filepath.Join(s.opts.AllowedPaths[0], rawPath)
+		} else {
+			// 无 allowlist 时基于 base_dir 解析
+			root = filepath.Join(s.opts.BaseDir, rawPath)
 		}
-		root = filepath.Join(s.opts.AllowedPaths[0], rawPath)
 	}
 	target, err := validatePath(root, s.opts.AllowedPaths, s.opts.BlockedPaths)
 	if err != nil {

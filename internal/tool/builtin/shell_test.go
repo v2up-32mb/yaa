@@ -67,3 +67,22 @@ func TestShellOutputTruncated(t *testing.T) {
 		t.Fatalf("content=%q", r.Content)
 	}
 }
+
+// TestShellEmptyAllowlistAllows 锁定「空 allowed_commands = 放行」语义：
+// 默认配置（无白名单）下 shell 可直接执行；blocked 仍始终生效。
+func TestShellEmptyAllowlistAllows(t *testing.T) {
+	s, _ := NewShell(newShellCfg(map[string]any{}))
+	r, err := s.Execute(context.Background(), tool.ExecutionScope{AgentID: "a"}, map[string]any{"command": "echo -n hello"})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if r.IsError || r.Content != "hello" {
+		t.Fatalf("empty allowlist should allow echo, got=%+v", r)
+	}
+	// blocked 始终优先
+	sb, _ := NewShell(newShellCfg(map[string]any{"blocked_commands": []any{"rm"}}))
+	rb, _ := sb.Execute(context.Background(), tool.ExecutionScope{AgentID: "a"}, map[string]any{"command": "rm x"})
+	if !rb.IsError || rb.Content != "command blocked" {
+		t.Fatalf("blocked must win, got=%+v", rb)
+	}
+}

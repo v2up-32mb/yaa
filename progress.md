@@ -3835,3 +3835,37 @@ plugin 52/52, session 58/58, skill 24/24, storage 23/23, tool 45/45
 ### 验证
 - 新增 11 个用例（search 6 / git 3 / process 2）全过；go vet + 全量 go test 全绿
 - Windows 交叉编译 + 交叉 vet 通过
+
+---
+
+## #76 — WebUI 极速打磨 + 工具集全量功能验证（发现并修复一批 BUG）
+
+### WebUI 修复（internal/api/webui/app.js）
+- **ElMessage/ElMessageBox 绑定**：UMD 构建下它们挂在 ElementPlus 命名空间而非裸全局；
+  修复前所有走 notify / sessionCmd / saveAndReconnect / 删除会话的路径都会抛
+  ReferenceError（无头浏览器实测抓到）→ 已改为从顶层绑定并带降级（原生 confirm 兜底）
+- **SSE 韧性**：服务端正常断开（read done）后不再丢失不重连；指数退避 1s→15s；
+  401/403 停止无限重连并提示一次（检查设置 Token）
+- **新建会话竞态**：newChat 进行中用户输入并发送会被静默丢弃 → 新增 creating 状态，
+  canSend 计入；send() 无会话/创建中/会话失效都有明确 toast
+- **停止/出错体验**：取消、错误、部分输出不再凭空消失 → finalizedLive 保留「已取消」提示
+  与部分回复（含推理与工具卡片）；turn 去重收尾（finalizedTurnId）
+- 删除当前会话同时关闭其 SSE；saveAndReconnect 前清理健康轮询（healthTimer 泄漏）；
+  SSE 块解析兼容 \r\n；mdOfGroup try/catch；quickSend 取消固定延迟
+- 会话操作后本地同步 state（暂停/恢复），删除改 ElMessageBox 确认
+
+### 工具集语义统一（shell/http/file）
+- **「空 allowlist = 放行（仅 blocked 生效）」**：此前 shell/http/file（以及新加的
+  file_search/git_*/process_*）在默认空名单下全部拒绝，示例配置注释「留空=不限制」与
+  实现矛盾、默认配置 Agent 一个工具都用不了 → 统一为空=放行、blocked 永远优先；
+  http 重定向同步；补充三个空名单语义测试
+- file_search/git_* 新增 base_dir：allowed_paths 非空按首个 allowed 根解析相对路径，
+  为空按 base_dir（默认 `.`）；docs/tool/builtin.md 写明统一语义
+
+### 验证基建（scripts/itest/，可复现）
+- mock2.py：OpenAI 兼容网关，支持 `!!tool <name> <args>` 驱动任意工具调用、
+  `!!slow` 慢速流、/v1/test/hello
+- run-integration.py：真实 Agent turn 逐一调用 22 项（shell/http/file_*/file_search/
+  git_*/config_query/introspection/process_*），断言最终回复回显真实工具输出 → **22/22**
+- run-webui-dom.js：无头 Chromium 纯 DOM 断言 8 场景（401 降级、设置重连、新建会话、
+  流式、工具卡片、中止、主题、删除）→ **fails=0，console 0 异常**

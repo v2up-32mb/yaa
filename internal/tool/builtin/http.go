@@ -58,24 +58,24 @@ func NewHTTP(cfg config.ToolConfig) (*HTTPTool, error) {
 				if len(via) >= o.MaxRedirects {
 					return errMaxRedirects
 				}
+				// 空 allowed_hosts = 放行（仅查 blocked）；非空时目标必须命中 allowlist。
 				host := strings.ToLower(req.URL.Hostname())
 				for _, b := range o.BlockedHosts {
 					if strings.ToLower(b) == host {
 						return errRedirectBlocked
 					}
 				}
-				if len(o.AllowedHosts) == 0 {
-					return errRedirectNotAllowed
-				}
-				ok := false
-				for _, a := range o.AllowedHosts {
-					if strings.ToLower(a) == host {
-						ok = true
-						break
+				if len(o.AllowedHosts) > 0 {
+					ok := false
+					for _, a := range o.AllowedHosts {
+						if strings.ToLower(a) == host {
+							ok = true
+							break
+						}
 					}
-				}
-				if !ok {
-					return errRedirectNotAllowed
+					if !ok {
+						return errRedirectNotAllowed
+					}
 				}
 				return nil
 			},
@@ -117,7 +117,8 @@ func (h *HTTPTool) Execute(ctx context.Context, scope tool.ExecutionScope, param
 	if h.isBlocked(parsed.Hostname()) {
 		return tool.ToolResult{Content: "host blocked", IsError: true}, nil
 	}
-	if len(h.opts.AllowedHosts) == 0 || !h.isAllowed(parsed.Hostname()) {
+	// 空 allowed_hosts = 放行（仅 blocked 生效）；非空时作为精确 allowlist。
+	if len(h.opts.AllowedHosts) > 0 && !h.isAllowed(parsed.Hostname()) {
 		return tool.ToolResult{Content: "host not allowed", IsError: true}, nil
 	}
 

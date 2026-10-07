@@ -30,6 +30,7 @@ type GitTool struct {
 type EffectiveGitOptions struct {
 	AllowedPaths       []string
 	BlockedPaths       []string
+	BaseDir            string
 	AllowedSubcommands map[string]bool
 	MaxOutputBytes     int
 }
@@ -45,6 +46,13 @@ func NewGit(sub string, cfg config.ToolConfig) (*GitTool, error) {
 	o := EffectiveGitOptions{
 		AllowedSubcommands: map[string]bool{},
 		MaxOutputBytes:     128 * 1024,
+		BaseDir:            ".",
+	}
+	if bd, ok := cfg.Options["base_dir"].(string); ok && bd != "" {
+		o.BaseDir = bd
+	}
+	if abs, err := filepath.Abs(o.BaseDir); err == nil {
+		o.BaseDir = abs
 	}
 	for k := range canonicalGitSubcommands {
 		o.AllowedSubcommands[k] = true
@@ -123,10 +131,11 @@ func (g *GitTool) Execute(ctx context.Context, scope tool.ExecutionScope, params
 		repo = rp
 	}
 	if !filepath.IsAbs(repo) {
-		if len(g.opts.AllowedPaths) == 0 {
-			return tool.ToolResult{Content: "no allowed paths configured", IsError: true}, nil
+		if len(g.opts.AllowedPaths) > 0 {
+			repo = filepath.Join(g.opts.AllowedPaths[0], repo)
+		} else {
+			repo = filepath.Join(g.opts.BaseDir, repo)
 		}
-		repo = filepath.Join(g.opts.AllowedPaths[0], repo)
 	}
 	repoPath, err := validatePath(repo, g.opts.AllowedPaths, g.opts.BlockedPaths)
 	if err != nil {

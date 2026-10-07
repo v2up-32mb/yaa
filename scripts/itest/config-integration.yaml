@@ -1,0 +1,84 @@
+# 集成测试环境主配置：auth 开启 + 全工具启用
+config_version: "1.0"
+runtime:
+  api:
+    http:
+      addr: 127.0.0.1:18081
+  storage:
+    path: /tmp/yaa-test/data/yaa.db
+  auth:
+    enabled: true
+    token_type: static
+    tokens:
+      - name: tester
+        token: "${YAA_TEST_TOKEN}"
+        roles: [admin]
+providers:
+  - id: mock
+    type: openai
+    base_url: "http://127.0.0.1:18080/v1"
+    api_key: "${MOCK_API_KEY}"
+    timeout: 60s
+    max_retries: 0
+    models:
+      - id: mock-1
+        name: Mock
+        context_window: 65536
+        max_output: 8192
+        supports_tools: true
+        supports_streaming: true
+agents:
+  - id: default
+    name: 集成测试助手
+    provider: mock
+    model: mock-1
+    system_prompt: "你是测试助手，工具结果请原样引用。"
+    tools: [shell, http, file_read, file_write, file_list, file_delete, file_search,
+            git_status, git_diff, git_log, git_add, git_restore, git_commit, git_branch, git_switch, git_pull,
+            process_start, process_list, process_logs, process_stop,
+            config_query, runtime_status, tool_list, agent_list, session_list, session_inspect,
+            skill_list, provider_list, mcp_list]
+    temperature: 0.0
+    planner:
+      type: disabled
+tools:
+
+  builtin:
+    shell:
+      enabled: true
+      timeout: 30s
+      options:
+        working_dir: /tmp/yaa-test
+        max_output_bytes: 65536
+    http:
+      enabled: true
+      timeout: 30s
+      options:
+        max_response_bytes: 1048576
+        blocked_hosts: ["example.com"]
+    file:
+      enabled: true
+      options:
+        allowed_paths: ["/tmp/yaa-test"]
+        max_file_size: 10MB
+    file_search:
+      enabled: true
+      options:
+        allowed_paths: ["/tmp/yaa-test"]
+        max_matches: 100
+    git:
+      enabled: true
+      timeout: 60s
+      options:
+        allowed_paths: ["/tmp/yaa-test"]
+    process:
+      enabled: true
+      options:
+        max_output_bytes: 65536
+memory:
+  enabled: false
+skills:
+  dir: /tmp/yaa-test/skills
+log:
+  level: warn
+  output: stderr

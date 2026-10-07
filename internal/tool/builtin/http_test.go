@@ -193,3 +193,23 @@ func TestHTTPRedirectExceedsMaxRedirects(t *testing.T) {
 		t.Errorf("content=%q should mention redirect", r.Content)
 	}
 }
+
+// TestHTTPEmptyAllowlistAllows 锁定「空 allowed_hosts = 放行」语义：
+// 默认配置（无白名单）下可请求任意 host；blocked 始终生效。
+func TestHTTPEmptyAllowlistAllows(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("open"))
+	}))
+	defer srv.Close()
+	h, _ := NewHTTP(config.ToolConfig{Enabled: true, Options: map[string]any{}})
+	r, err := h.Execute(context.Background(), tool.ExecutionScope{AgentID: "a"}, map[string]any{"url": srv.URL})
+	if err != nil || r.IsError {
+		t.Fatalf("empty allowlist should allow request, err=%v r=%+v", err, r)
+	}
+	u, _ := url.Parse(srv.URL)
+	hb, _ := NewHTTP(config.ToolConfig{Enabled: true, Options: map[string]any{"blocked_hosts": []any{u.Hostname()}}})
+	rb, _ := hb.Execute(context.Background(), tool.ExecutionScope{AgentID: "a"}, map[string]any{"url": srv.URL})
+	if !rb.IsError || rb.Content != "host blocked" {
+		t.Fatalf("blocked must win, got=%+v", rb)
+	}
+}

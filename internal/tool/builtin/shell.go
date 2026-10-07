@@ -90,7 +90,8 @@ func (s *ShellTool) Execute(ctx context.Context, scope tool.ExecutionScope, para
 	if s.isBlocked(canon) {
 		return tool.ToolResult{Content: "command blocked", IsError: true}, nil
 	}
-	if len(s.opts.AllowedCommands) == 0 || !s.isAllowed(canon) {
+	// 空 allowed_commands = 放行（仅 blocked 生效）；非空时作为前缀白名单。
+	if len(s.opts.AllowedCommands) > 0 && !s.isAllowed(canon) {
 		return tool.ToolResult{Content: "command not allowed", IsError: true}, nil
 	}
 

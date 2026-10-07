@@ -280,8 +280,9 @@ func validatePath(path string, allowed, blocked []string) (string, error) {
 			return "", fmt.Errorf("path is blocked")
 		}
 	}
+	// 空 allowed_paths = 放行（仅 blocked 生效）；非空时为目录白名单。
 	if len(allowed) == 0 {
-		return "", fmt.Errorf("no allowed paths configured")
+		return target, nil
 	}
 	for _, root := range allowed {
 		if within(target, root) {

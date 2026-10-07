@@ -53,7 +53,8 @@ type EffectiveShellOptions struct {
 
 | 配置 | 说明 |
 |------|------|
-| `allowed_commands` | 白名单模式，只允许列出的命令前缀 |
+| `allowed_commands` | 前缀白名单；**空列表 = 不限制**（仅 `blocked_commands` 生效） |
+> **统一语义**：shell/http/file 及各工具的 `allowed_*` 白名单「空 = 放行」，非空才收紧；`blocked_*` 永远优先。相对路径在 `allowed_*` 非空时基于首个允许根解析，为空时基于 `base_dir`（默认 `.`）解析。
 | `blocked_commands` | 黑名单模式，禁止列出的命令前缀（如 `rm -rf`, `mkfs`） |
 | 两者同时配置 | 黑名单优先 |
 
@@ -81,7 +82,7 @@ type EffectiveHTTPOptions struct {
 }
 ```
 
-每次初始请求和重定向都对 `url.Hostname()` 的小写结果做精确匹配；`blocked_hosts` 优先，非空 `allowed_hosts` 是 allowlist。达到 `max_redirects` 或目标不允许时停止，不向目标发送下一跳请求。
+每次初始请求和重定向都对 `url.Hostname()` 的小写结果做精确匹配；`blocked_hosts` 优先。**`allowed_hosts` 为空 = 放行任意 host**（仅查 blocked）；非空时作为精确 allowlist。达到 `max_redirects` 或目标不允许时停止，不向目标发送下一跳请求。
 
 **Parameters Schema：**
 
@@ -218,7 +219,7 @@ func validatePath(path string, allowed, blocked []string) (string, error) {
 
 | 参数 | 类型 | 说明 |
 |------|------|------|
-| `path` | string | 必填；文件或目录，相对路径基于 `allowed_paths[0]` |
+| `path` | string | 必填；文件或目录，相对路径：`allowed_paths` 非空时基于第一个 allowed 根，否则基于 `base_dir`（默认 `.`） |
 | `query` | string | 必填；子串，或 `regex=true` 时的 Go 正则 |
 | `regex` | bool | 编译失败返回 `invalid regex` |
 | `use_gitignore` | bool | 默认 true；读取根目录 `.gitignore`（精确路径 / `*` / `**/` 前缀 / 尾部 `/`；`!` 取反、`?`、`[abc]` 不支持） |
@@ -231,10 +232,10 @@ Config（`tools.builtin.file_search.*`）：`allowed_paths` / `blocked_paths`（
 `git_status` / `git_diff` / `git_log` / `git_branch` / `git_add` / `git_restore` / `git_commit` / `git_switch` / `git_pull`，对齐 mcp-tools `git.*` 白名单设计：
 
 - 只允许上述固定子命令；`push` / `rebase` / 任意透传**不在白名单**（构造期即无该工具）
-- 参数形态固定、无 shell；`repo_path` 基于 `allowed_paths` 校验
+- 参数形态固定、无 shell；`repo_path` 相对路径：`allowed_paths` 非空时基于第一个 allowed 根，否则基于 `base_dir`（默认 `.`）
 - 防注入：`message` / `branch` 拒绝 `-` 开头；`paths` 拒绝 `-` 开头；`restore` 显式加 `--`
 - `commit` 用单 `-m` 参数传消息；`pull` 仅 `--ff-only`；`log` 限 `-n ≤100`
-- Config（`tools.builtin.git.*`）：`allowed_paths`/`blocked_paths`、`allowed_subcommands`（覆盖默认白名单）、`max_output_bytes`
+- Config（`tools.builtin.git.*`）：`allowed_paths`/`blocked_paths`（空 = 放行，blocked 优先）、`base_dir`、`allowed_subcommands`（覆盖默认白名单）、`max_output_bytes`
 - 输出 ≤128KB 截断；非零退出 `IsError=true`
 
 ### 6.6 process_*（mcp-tools 互补）

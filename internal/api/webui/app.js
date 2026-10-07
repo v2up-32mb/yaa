@@ -4,6 +4,10 @@
  */
 const { createApp, ref, reactive, computed, watch, nextTick, onMounted } = Vue;
 
+// Element Plus UMD 下 ElMessage/ElMessageBox 挂在 ElementPlus 命名空间（非裸全局）
+const ElMessage = (window.ElementPlus && window.ElementPlus.ElMessage) || null;
+const ElMessageBox = (window.ElementPlus && window.ElementPlus.ElMessageBox) || null;
+
 marked.setOptions({ gfm: true, breaks: false });
 
 let bootPromise = null;
@@ -14,6 +18,7 @@ const app = createApp({
     const booted = ref(false);
     const connected = ref(false);
     const streaming = ref(false);
+    const creating = ref(false); // 新建会话进行中
     const sseOk = ref(false);
     const agents = ref([]);
     const providers = ref([]);
@@ -31,16 +36,21 @@ const app = createApp({
 
     // 当前 turn 的实时状态
     const live = reactive({ turnId: '', text: '', reasoning: '', tools: [], done: false, error: '' });
+    // 已结束但未持久化的提示（取消/错误/部分输出），随消息区渲染
+    const finalizedLive = ref([]);
 
     let sseAbort = null;      // 当前 SSE AbortController
     let sseReconnectTimer = null;
+    let sseNotified401 = false;
+    let sseRetry = 0;
     let currentTurnAbort = null;
     let mdRaf = 0;
+    let finalizedTurnId = '';
 
     // ---------- 派生 ----------
     const currentAgent = computed(() => agents.value.find(a => a.id === agentId.value) || null);
     const currentSession = computed(() => sessions.value.find(s => s.id === sessionId.value) || null);
-    const canSend = computed(() => !!sessionId.value && !!draft.value.trim() && !streaming.value);
+    const canSend = computed(() => !!sessionId.value && !!draft.value.trim() && !streaming.value && !creating.value);
 
     const hints = [
       '帮我总结一下这个项目',
@@ -74,6 +84,7 @@ const app = createApp({
     }
 
     function notify(msg, type = 'info') {
+      if (!ElMessage) return;
       ElMessage({ message: msg, type, grouping: true, duration: 2200 });
     }
 
@@ -97,6 +108,10 @@ const app = createApp({
 
     function statusLabel(s) {
       return { running: '运行中', paused: '已暂停', stopped: '已停止' }[s] || s;
+    }
+
+    function sessionStateLabel(s) {
+      return { active: '进行中', paused: '已暂停', closed: '已关闭', created: '新会话' }[s] || s;
     }
 
     function sessionTitle(s) {
@@ -134,6 +149,7 @@ const app = createApp({
       saveSettings();
       settingsOpen.value = false;
       notify('设置已保存，重新连接…', 'info');
+      stopHealthPoll();
       closeSSE();
       if (currentTurnAbort) currentTurnAbort.abort();
       bootPromise = boot();
@@ -171,7 +187,11 @@ const app = createApp({
     }
 
     let healthTimer = null;
+    function stopHealthPoll() {
+      if (healthTimer) { clearInterval(healthTimer); healthTimer = null; }
+    }
     async function pollHealth() {
+      stopHealthPoll();
       const tick = async () => {
         const h = await api('/api/v1/health').catch(() => null);
         connected.value = !!(h && h.ready);
@@ -210,7 +230,8 @@ const app = createApp({
         notify('请先选择 Agent', 'warning');
         return;
       }
-      if (streaming.value) { notify('请等待当前生成完成', 'warning'); return; }
+      if (streaming.value || creating.value) { notify('请等待当前操作完成', 'warning'); return; }
+      creating.value = true;
       try {
         const d = await api(`/api/v1/agents/${encodeURIComponent(agentId.value)}/sessions`, {
           method: 'POST',
@@ -221,19 +242,22 @@ const app = createApp({
         await openSession(d.id);
       } catch (e) {
         notify('新建会话失败：' + e.message, 'error');
+      } finally {
+        creating.value = false;
       }
     }
 
     async function selectSession(id) {
       if (streaming.value && id !== sessionId.value) { notify('请等待当前生成完成', 'warning'); return; }
       if (id === sessionId.value) return;
-      currentTurnAbort && currentTurnAbort.abort();
+      if (currentTurnAbort) currentTurnAbort.abort();
       sessionId.value = id;
       await openSession(id);
     }
 
     async function openSession(id) {
       liveReset();
+      finalizedLive.value = [];
       closeSSE();
       messages.value = [];
       await loadMessages(id);
@@ -255,17 +279,38 @@ const app = createApp({
     async function sessionCmd(cmd, s) {
       try {
         if (cmd === 'delete') {
-          if (!confirm(`确定删除会话 ${sessionTitle(s)}？此操作不可恢复。`)) return;
+          const ok = await confirmDialog(`确定删除会话「${sessionTitle(s)}」？此操作不可恢复。`, '删除会话');
+          if (!ok) return;
           await api(`/api/v1/sessions/${encodeURIComponent(s.id)}`, { method: 'DELETE' });
-          if (sessionId.value === s.id) { messages.value = []; sessionId.value = ''; }
+          if (sessionId.value === s.id) {
+            messages.value = [];
+            sessionId.value = '';
+            closeSSE();
+          }
         } else if (cmd === 'pause' || cmd === 'resume') {
           await api(`/api/v1/sessions/${encodeURIComponent(s.id)}/${cmd}`, { method: 'POST' });
+          if (sessionId.value === s.id) {
+            // 本会话状态变化，同步列表中的 DTO
+            const idx = sessions.value.findIndex(x => x.id === s.id);
+            if (idx >= 0) sessions.value[idx].state = (cmd === 'pause' ? 'paused' : 'active');
+          }
         }
         await loadSessions();
-        notify(`会话 ${cmd} 成功`, 'success');
+        notify(cmd === 'delete' ? '会话已删除' : `会话${cmd === 'pause' ? '已暂停' : '已恢复'}`, 'success');
       } catch (e) {
         notify(`操作失败：${e.message}`, 'error');
       }
+    }
+
+    function confirmDialog(message, title = '确认') {
+      if (!ElMessageBox) {
+        return Promise.resolve(window.confirm(message));
+      }
+      return new Promise(resolve => {
+        ElMessageBox.confirm(message, title, {
+          confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning',
+        }).then(() => resolve(true)).catch(() => resolve(false));
+      });
     }
 
     // ---------- SSE 订阅 ----------
@@ -282,23 +327,43 @@ const app = createApp({
             signal: ctrl.signal,
           });
           if (!res.ok || !res.body) {
-            if (!ctrl.signal.aborted) { sseOk.value = false; scheduleSSEReconnect(id); }
+            if (!ctrl.signal.aborted) {
+              if (res.status === 401 || res.status === 403) {
+                // 认证失败不需要无限重连：提示一次，等待设置
+                if (!sseNotified401) {
+                  sseNotified401 = true;
+                  notify('流式订阅被拒绝（401/403）：请检查设置里的 Token', 'error');
+                }
+                sseOk.value = false;
+              } else {
+                sseOk.value = false;
+                scheduleSSEReconnect(id);
+              }
+            }
             return;
           }
+          sseNotified401 = false;
+          sseRetry = 0;
           sseOk.value = true;
           const reader = res.body.getReader();
           const dec = new TextDecoder();
           let buf = '';
           for (;;) {
             const { done, value } = await reader.read();
-            if (done) break;
+            if (done) break; // 服务端关闭连接（非本端 abort）→ 外层重连
             buf += dec.decode(value, { stream: true });
+            // 统一 \r\n 与 \n（SSE 规范两者皆可）
+            buf = buf.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
             let idx;
             while ((idx = buf.indexOf('\n\n')) >= 0) {
               const block = buf.slice(0, idx);
               buf = buf.slice(idx + 2);
               handleSSEBlock(block);
             }
+          }
+          if (!ctrl.signal.aborted) {
+            sseOk.value = false;
+            scheduleSSEReconnect(id);
           }
         } catch (e) {
           if (!ctrl.signal.aborted) { sseOk.value = false; scheduleSSEReconnect(id); }
@@ -309,10 +374,13 @@ const app = createApp({
 
     function scheduleSSEReconnect(id) {
       clearTimeout(sseReconnectTimer);
-      if (sseAbort !== null && id !== sessionId.value) return;
+      if (sseAbort === null || id !== sessionId.value) return; // 主动关闭或已切换
+      // 指数退避：1s → 2s → 4s … 封顶 15s
+      const delay = Math.min(15000, 1000 * Math.pow(2, sseRetry));
+      sseRetry = Math.min(sseRetry + 1, 6);
       sseReconnectTimer = setTimeout(() => {
         if (sessionId.value === id && !document.hidden) openSSE(id);
-      }, 3000);
+      }, delay);
     }
 
     function closeSSE() {
@@ -390,12 +458,32 @@ const app = createApp({
             } else {
               live.error = frame.message || '生成失败';
             }
+            finalizeLiveTurn();
             live.done = true;
+            liveResetTools();
+            const esid = sessionId.value;
+            if (esid) { loadMessages(esid); loadSessions(); }
           }
           break;
         case 'session_end':
           closeSSE();
           break;
+      }
+    }
+
+    // 把已结束但未持久化的 turn 内容转成列表项保留（取消/错误/部分输出）。
+    // 同一个 turn 只收尾一次（SSE error 帧与 REST catch 都可能触发）。
+    function finalizeLiveTurn() {
+      if (live.turnId && live.turnId === finalizedTurnId) return;
+      finalizedTurnId = live.turnId || finalizedTurnId;
+      if (live.error) {
+        finalizedLive.value.push({ kind: 'error', key: live.turnId || String(Date.now()), text: live.error });
+      }
+      if (live.text || live.tools.length) {
+        finalizedLive.value.push({
+          kind: 'partial', key: live.turnId || String(Date.now()),
+          text: live.text, reasoning: live.reasoning, tools: live.tools.slice(),
+        });
       }
     }
 
@@ -441,18 +529,39 @@ const app = createApp({
           liveText: live.text,
         });
       }
+      // 已结束但未持久化的内容：错误/取消提示 + 部分输出
+      for (const f of finalizedLive.value) {
+        if (f.kind === 'error') {
+          groups.push({
+            key: 'fin-' + f.key, userMessages: [], assistantMessage: null, live: false,
+            toolCalls: [], error: f.text, reasonOpen: false, reasoning: '', id: 'fin',
+          });
+        } else if (f.kind === 'partial') {
+          groups.push({
+            key: 'fin-' + f.key, userMessages: [], assistantMessage: null, live: false,
+            toolCalls: f.tools || [], error: '', reasonOpen: false, reasoning: f.reasoning || '',
+            id: 'fin', liveText: f.text, partial: true,
+          });
+        }
+      }
       return groups;
     });
 
     function mdOfGroup(g) {
-      const text = g.live && g.liveText != null ? g.liveText : (g.assistantMessage ? g.assistantMessage.content : '');
+      let text = '';
+      if (g.live || g.partial) text = g.liveText || '';
+      else if (g.assistantMessage) text = g.assistantMessage.content || '';
       if (!text) return '';
-      const html = marked.parse(text);
-      return DOMPurify.sanitize(html);
+      try {
+        return DOMPurify.sanitize(marked.parse(text));
+      } catch (e) {
+        return '';
+      }
     }
 
     function reasoningText(g) {
-      return (g.live && g.liveText != null) ? live.reasoning : (g.reasoning || '');
+      if (g.live && g.liveText != null) return live.reasoning;
+      return g.reasoning || '';
     }
 
     function scheduleMarkdown() {
@@ -465,7 +574,15 @@ const app = createApp({
 
     // ---------- 发送 ----------
     async function send() {
-      if (!sessionId.value || !draft.value.trim() || streaming.value) return;
+      if (!sessionId.value) {
+        notify(creating.value ? '会话创建中，请稍候…' : '请先选择或新建一个会话', 'warning');
+        return;
+      }
+      if (!currentSession.value) {
+        notify('会话已失效，请重新选择', 'warning');
+        return;
+      }
+      if (!draft.value.trim() || streaming.value) return;
       const content = draft.value.trim();
       draft.value = '';
       const turnId = newTurnId();
@@ -477,19 +594,29 @@ const app = createApp({
       const sessionIdNow = sessionId.value;
       const ctrl = new AbortController();
       currentTurnAbort = ctrl;
+      messages.value.push({
+        id: 'tmp-' + uuidShort(), session_id: sessionIdNow, role: 'user', content,
+        tool_calls: [], tool_call_id: '', created_at: new Date().toISOString(),
+      });
+      scrollBottom(true);
       try {
-        const post = api(`/api/v1/sessions/${encodeURIComponent(sessionIdNow)}/messages`, {
+        await api(`/api/v1/sessions/${encodeURIComponent(sessionIdNow)}/messages`, {
           method: 'POST',
           body: JSON.stringify({ turn_id: turnId, content }),
           signal: ctrl.signal,
         });
-        // 即使 SSE 未订阅，也先本地渲染用户消息
-        messages.value.push({
-          id: 'tmp-' + uuidShort(), session_id: sessionIdNow, role: 'user', content,
-          tool_calls: [], tool_call_id: '', created_at: new Date().toISOString(),
-        });
-        scrollBottom(true);
-        await post; // 等待 turn 完成（SSE 已实时推进）
+        // POST 返回即 turn 已提交。若 SSE 没有及时把 assistant_done 送达到前端
+        // （订阅断开/丢帧），这里兜底：以服务端为准重载 + 清流式状态。
+        if (streaming.value) {
+          streaming.value = false;
+          currentTurnAbort = null;
+          live.done = true;
+          liveResetTools();
+        }
+        if (sessionIdNow === sessionId.value) {
+          await loadMessages(sessionIdNow);
+          loadSessions();
+        }
       } catch (e) {
         streaming.value = false;
         currentTurnAbort = null;
@@ -500,13 +627,20 @@ const app = createApp({
         } else {
           live.error = '已取消';
         }
+        finalizeLiveTurn();
+        // 清掉本地临时用户消息，回到服务端一致状态
+        if (sessionIdNow === sessionId.value) {
+          await loadMessages(sessionIdNow);
+        } else {
+          messages.value = messages.value.filter(m => m.id && !String(m.id).startsWith('tmp-'));
+        }
       }
     }
 
     function stopGenerate() {
+      // 取消 REST 请求即取消服务端 turn（handler 用 request context）；
+      // SSE 侧会收到 error(code=canceled) 帧并完成收尾。
       if (currentTurnAbort) currentTurnAbort.abort();
-      // 通过 abort fetch 取消 turn；SSE 会收到 error(code=canceled)
-      setTimeout(() => { streaming.value = false; }, 300);
     }
 
     // ---------- UI 事件 ----------
@@ -525,8 +659,16 @@ const app = createApp({
     function quickSend(text) {
       draft.value = text;
       inputBox.value && inputBox.value.focus();
-      if (currentSession.value) send();
-      else if (!sessionId.value) { newChat().then(() => setTimeout(send, 200)); }
+      if (currentSession.value) {
+        send();
+      } else if (!sessionId.value) {
+        (async () => {
+          await newChat();
+          send();
+        })();
+      } else {
+        send();
+      }
     }
 
     function scrollBottom(force) {
@@ -559,11 +701,11 @@ const app = createApp({
     return {
       booted, connected, streaming, sseOk, agents, providers, agentId, sessions, sessionId,
       messages, draft, settingsOpen, settings, lastUsage, msgBox, inputBox, mdBox,
-      currentAgent, currentSession, canSend, messageGroups, hints,
+      currentAgent, currentSession, canSend, messageGroups, hints, finalizedLive,
       onAgentChange, newChat, selectSession, sessionCmd, sessionTitle,
       send, stopGenerate, onKeydown, onScroll, quickSend,
-      saveSettings, saveAndReconnect, toggleTheme,
-      prettyJSON, statusLabel, mdOfGroup, reasoningText,
+      saveSettings, saveAndReconnect, toggleTheme, confirmDialog,
+      prettyJSON, statusLabel, mdOfGroup, reasoningText, sessionStateLabel,
     };
   },
 });

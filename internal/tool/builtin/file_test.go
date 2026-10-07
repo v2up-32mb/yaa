@@ -238,3 +238,23 @@ func TestFileListNonRecursiveDefault(t *testing.T) {
 		}
 	}
 }
+
+// TestFileEmptyAllowlistAllows 锁定「空 allowed_paths = 放行」语义：
+// 默认配置（无白名单）下可读写任意路径（blocked 仍生效）。
+func TestFileEmptyAllowlistAllows(t *testing.T) {
+	d := tmpDir(t)
+	p := filepath.Join(d, "x.txt")
+	if err := os.WriteFile(p, []byte("hi"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	read, _ := NewFileRead(fileCfgWithAllowed(nil, nil))
+	r, err := read.Execute(context.Background(), tool.ExecutionScope{AgentID: "a"}, map[string]any{"path": p, "encoding": "utf-8"})
+	if err != nil || r.IsError {
+		t.Fatalf("empty allowlist should allow read, err=%v r=%+v", err, r)
+	}
+	rb, _ := NewFileRead(fileCfgWithAllowed(nil, []string{d}))
+	rb2, _ := rb.Execute(context.Background(), tool.ExecutionScope{AgentID: "a"}, map[string]any{"path": p, "encoding": "utf-8"})
+	if !rb2.IsError || rb2.Content != "path is blocked" {
+		t.Fatalf("blocked must win, got=%+v", rb2)
+	}
+}
