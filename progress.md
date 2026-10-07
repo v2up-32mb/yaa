@@ -3869,3 +3869,10 @@ plugin 52/52, session 58/58, skill 24/24, storage 23/23, tool 45/45
   git_*/config_query/introspection/process_*），断言最终回复回显真实工具输出 → **22/22**
 - run-webui-dom.js：无头 Chromium 纯 DOM 断言 8 场景（401 降级、设置重连、新建会话、
   流式、工具卡片、中止、主题、删除）→ **fails=0，console 0 异常**
+
+## #77 — 首次正式发版
+- yaa **v0.2.0**：Go 1.20.14 构建，win/linux/arm64/darwin 共 5 平台产物 + SHA256SUMS，
+  release job 全绿；Windows 产物为 PE32+ x86-64，散列与 SHA256SUMS 一致
+- mcp-tools **v1.1.0**（合并 yolo + module path 修正后的主线首发）：4 平台产物，
+  同法核验通过；v1.0.0/v0.1.x-rc* 历史 tag 保留未动
+- release notes 已注明「Win7 SP1 x64 实机待验证」的已知状态
