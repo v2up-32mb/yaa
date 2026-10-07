@@ -3888,3 +3888,8 @@ plugin 52/52, session 58/58, skill 24/24, storage 23/23, tool 45/45
   shorthand 组合），须用 `--config`；README/示例/测试脚本已同步更新
 - 回归：go test/vet（linux+windows）全绿，Win7 交叉编译 PE32+ x64 正常；
   实测 `-h`/`--version`/三个 config 子命令/`--config` 与位置参数两种启动方式均通
+
+## #79 — yaa v0.3.0 发布（cobra CLI 重构版）
+- tag v0.3.0 → CI release job 全绿；5 平台产物 + SHA256SUMS 已核验
+  （Windows 产物 PE32+ x86-64，散列一致）；正式发布（非 draft/prerelease）
+- 内容：CLI 迁移 cobra（完整帮助树 / --version / completion / 位置参数启动配置）
