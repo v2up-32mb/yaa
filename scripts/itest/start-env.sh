@@ -24,7 +24,7 @@ cd "$DATA"
 MOCK_API_KEY=itest setsid nohup python3 "$SCRIPT_DIR/mock2.py" > mock.log 2>&1 &
 sleep 1
 MOCK_API_KEY=itest YAA_TEST_TOKEN=itest-secret-token setsid nohup "$YAA_BIN" \
-  -config "$DATA/config-integration.yaml" > yaa.log 2>&1 &
+  --config "$DATA/config-integration.yaml" > yaa.log 2>&1 & 
 sleep 3
 
 echo "health:    $(curl -s http://127.0.0.1:18081/api/v1/health | head -c 60)"

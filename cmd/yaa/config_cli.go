@@ -1,111 +1,121 @@
-// Package main: yaa config 子命令 (convert/defaults/migrate).
+// Package main: yaa config 子命令 (convert/defaults/migrate)。
 // docs/config/checklist.md: 格式转换 / 默认值 / 迁移 CLI.
 package main
 
 import (
-	"flag"
 	"fmt"
 	"io"
 	"os"
 
+	"github.com/spf13/cobra"
+
 	"github.com/v2up-32mb/yaa/internal/config"
 )
 
-// runConfigCLI 路由 yaa config <subcmd>.
-func runConfigCLI(args []string) int {
-	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: yaa config <convert|defaults|migrate> [flags]")
-		return 2
-	}
-	switch args[0] {
-	case "convert":
-		return runConfigConvert(args[1:])
-	case "defaults":
-		return runConfigDefaults(args[1:])
-	case "migrate":
-		return runConfigMigrate(args[1:])
-	default:
-		fmt.Fprintf(os.Stderr, "yaa config: unknown subcommand %q\n", args[0])
-		return 2
-	}
+// configCmd: yaa config <convert|defaults|migrate>.
+var configCmd = &cobra.Command{
+	Use:   "config",
+	Short: "配置管理：格式转换 / 导出默认值 / 迁移",
+	Long: `管理 yaa 配置文件。
+
+子命令：
+  convert   在 YAML/JSON/TOML 之间转换配置文件
+  defaults  导出完整的内置默认配置
+  migrate   升级旧版本配置文件
+
+运行 "yaa config <子命令> --help" 查看更多。`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return cmd.Help()
+	},
 }
 
-// runConfigConvert: yaa config convert --from ./yaa.yaml --to ./yaa.toml
-// docs/config/formats.md §4.
-func runConfigConvert(args []string) int {
-	fs := flag.NewFlagSet("convert", flag.ContinueOnError)
-	from := fs.String("from", "", "源配置文件路径")
-	to := fs.String("to", "", "目标配置文件路径")
-	if err := fs.Parse(args); err != nil {
-		fmt.Fprintf(os.Stderr, "yaa config convert: %v\n", err)
-		return 2
-	}
-	if *from == "" || *to == "" {
-		fmt.Fprintln(os.Stderr, "yaa config convert: --from and --to required")
-		return 2
-	}
-	if err := config.Convert(*from, *to); err != nil {
-		fmt.Fprintf(os.Stderr, "yaa config convert: %v\n", err)
-		return 1
-	}
-	return 0
+var (
+	convertFrom string
+	convertTo   string
+)
+
+var convertCmd = &cobra.Command{
+	Use:   "convert --from FILE --to FILE",
+	Short: "在 YAML/JSON/TOML 之间转换配置文件",
+	Example: `  yaa config convert --from ./yaa.yaml --to ./yaa.toml
+  yaa config convert --from ./yaa.json --to ./yaa.yaml`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return config.Convert(convertFrom, convertTo)
+	},
 }
 
-// runConfigDefaults: yaa config defaults [--format yaml|json|toml]
-// docs/config/checklist.md 行87: 输出完整默认配置.
-func runConfigDefaults(args []string) int {
-	fs := flag.NewFlagSet("defaults", flag.ContinueOnError)
-	format := fs.String("format", "yaml", "输出格式 (yaml|json|toml)")
-	if err := fs.Parse(args); err != nil {
-		fmt.Fprintf(os.Stderr, "yaa config defaults: %v\n", err)
-		return 2
-	}
-	cfg := config.Default()
-	// 序列化到 raw map 后用 MarshalMap 输出, 保留文档语义
-	raw, err := config.ConfigToMap(cfg)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "yaa config defaults: %v\n", err)
-		return 1
-	}
-	data, err := config.MarshalMap(raw, config.Format(*format))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "yaa config defaults: %v\n", err)
-		return 1
-	}
-	if _, err := io.WriteString(os.Stdout, string(data)); err != nil {
-		fmt.Fprintf(os.Stderr, "yaa config defaults: write: %v\n", err)
-		return 1
-	}
-	return 0
-}
+var (
+	defaultsFormat string
+)
 
-// runConfigMigrate: yaa config migrate --config ./yaa.yaml [--backup] [--dry-run]
-// docs/config/migration.md §4.
-func runConfigMigrate(args []string) int {
-	fs := flag.NewFlagSet("migrate", flag.ContinueOnError)
-	path := fs.String("config", "", "配置文件路径")
-	backup := fs.Bool("backup", false, "写回迁移后的配置 (备份原文件为 .bak)")
-	dryRun := fs.Bool("dry-run", false, "只输出变更摘要, 不写盘")
-	if err := fs.Parse(args); err != nil {
-		fmt.Fprintf(os.Stderr, "yaa config migrate: %v\n", err)
-		return 2
-	}
-	if *path == "" {
-		fmt.Fprintln(os.Stderr, "yaa config migrate: --config required")
-		return 2
-	}
-	result, err := config.MigrateFile(*path, *backup, *dryRun)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "yaa config migrate: %v\n", err)
-		return 1
-	}
-	if *dryRun {
-		// 简化输出: 打印 config_version 字段
-		if v, ok := result["config_version"]; ok {
-			fmt.Printf("dry-run: migrated config_version=%v\n", v)
-		} else {
-			fmt.Println("dry-run: no migration needed")
+var defaultsCmd = &cobra.Command{
+	Use:   "defaults",
+	Short: "导出完整的内置默认配置",
+	Example: `  yaa config defaults                  # YAML（默认）
+  yaa config defaults --format json   # JSON
+  yaa config defaults --format toml   # TOML`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		cfg := config.Default()
+		raw, err := config.ConfigToMap(cfg)
+		if err != nil {
+			return fmt.Errorf("defaults: %w", err)
 		}
-	}
-	return 0
+		data, err := config.MarshalMap(raw, config.Format(defaultsFormat))
+		if err != nil {
+			return fmt.Errorf("defaults: %w", err)
+		}
+		_, err = io.WriteString(os.Stdout, string(data))
+		if err != nil {
+			return fmt.Errorf("defaults: write: %w", err)
+		}
+		return nil
+	},
+}
+
+var (
+	migratePath   string
+	migrateBackup bool
+	migrateDryRun bool
+)
+
+var migrateCmd = &cobra.Command{
+	Use:   "migrate --config FILE [--backup] [--dry-run]",
+	Short: "升级旧版本配置文件",
+	Long: `把旧版本配置升级到当前 config_version，必要时写回（--backup 会先备份为 .bak）。
+--dry-run 只打印变更摘要不写盘。`,
+	Example: `  yaa config migrate --config ./yaa.yaml --dry-run
+  yaa config migrate --config ./yaa.yaml --backup`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		result, err := config.MigrateFile(migratePath, migrateBackup, migrateDryRun)
+		if err != nil {
+			return err
+		}
+		if migrateDryRun {
+			if v, ok := result["config_version"]; ok {
+				fmt.Printf("dry-run: migrated config_version=%v\n", v)
+			} else {
+				fmt.Println("dry-run: no migration needed")
+			}
+		}
+		return nil
+	},
+}
+
+func init() {
+	// convert
+	convertCmd.Flags().StringVar(&convertFrom, "from", "", "源配置文件路径")
+	convertCmd.Flags().StringVar(&convertTo, "to", "", "目标配置文件路径")
+	_ = convertCmd.MarkFlagRequired("from")
+	_ = convertCmd.MarkFlagRequired("to")
+
+	// defaults
+	defaultsCmd.Flags().StringVar(&defaultsFormat, "format", "yaml", "输出格式 (yaml|json|toml)")
+
+	// migrate
+	migrateCmd.Flags().StringVar(&migratePath, "config", "", "配置文件路径")
+	migrateCmd.Flags().BoolVar(&migrateBackup, "backup", false, "写回迁移后的配置（备份原文件为 .bak）")
+	migrateCmd.Flags().BoolVar(&migrateDryRun, "dry-run", false, "只输出变更摘要，不写盘")
+	_ = migrateCmd.MarkFlagRequired("config")
+
+	configCmd.AddCommand(convertCmd, defaultsCmd, migrateCmd)
 }

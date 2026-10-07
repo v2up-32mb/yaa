@@ -2,8 +2,8 @@
 # Yaa! Runtime 配置示例（Windows 7 SP1 x64 部署参考）
 # -----------------------------------------------------------------------------
 # 用法：
-#   yaa.exe -config yaa.example.yaml
-#   （不传 -config 时按优先级探测：./yaa.yaml > ~/.yaa/yaa.yaml ...）
+#   yaa.exe --config yaa.example.yaml
+#   （不传 --config 时按优先级探测：./yaa.yaml > ~/.yaa/yaa.yaml ...）
 #
 # 这是一份「最小可行 + 常用项」示例。完整默认值可运行：
 #   yaa config defaults   # 导出全部内置默认配置

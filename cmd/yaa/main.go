@@ -1,29 +1,65 @@
+// Package main: yaa 命令行入口（cobra 结构）。
 package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/spf13/cobra"
+
+	"github.com/v2up-32mb/yaa/internal/api"
 	"github.com/v2up-32mb/yaa/internal/config"
 	"github.com/v2up-32mb/yaa/internal/logging"
 	"github.com/v2up-32mb/yaa/internal/runtime"
 )
 
+// rootCmd 是 yaa 的根命令；无子命令时启动运行时（默认动作）。
+var rootCmd = &cobra.Command{
+	Use:   "yaa",
+	Short: "Yaa! Runtime — 面向 Windows 7 的本地 AI Agent 运行时",
+	Long: `Yaa! Runtime 是一个可完全在 Windows 7 SP1 x64 上运行的本地 AI Agent 运行时。
+
+默认（不带子命令）即启动服务：加载配置、连接 LLM Provider、暴露 REST/SSE/WS API
+与 WebUI，按 Ctrl+C 正常退出。
+
+子命令：
+  config   配置管理（转换 / 导出默认值 / 迁移）
+
+运行 "yaa config --help" 查看配置子命令详情。`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		// 位置参数可作为配置文件路径：yaa ./yaa.yaml（与 -config/--config 等价）
+		path := configPath
+		if path == "" && len(args) > 0 {
+			path = args[0]
+		}
+		return run(path)
+	},
+	// 显式接受位置参数：否则 cobra 会把第一个非 flag 参数当子命令名而报 unknown command，
+	// 且单横线长 flag（-config）在 Find/stripFlags 阶段不被识别为带值 flag。
+	Args:         cobra.ArbitraryArgs,
+	SilenceUsage: true,
+}
+
+var configPath string
+
+func init() {
+	rootCmd.Flags().StringVar(&configPath, "config", "", "配置文件路径（默认自动探测 ./yaa.yaml 等）")
+
+	rootCmd.Version = api.Version
+	rootCmd.SetVersionTemplate(fmt.Sprintf(`yaa version {{.Version}}
+commit  %s
+built   %s
+`, api.GitCommit, api.BuildTime))
+
+	rootCmd.AddCommand(configCmd)
+}
+
 func main() {
-	// 子命令路由: yaa config <convert|defaults|migrate>
-	if len(os.Args) > 1 && os.Args[1] == "config" {
-		os.Exit(runConfigCLI(os.Args[2:]))
-	}
-
-	configPath := flag.String("config", "", "配置文件路径")
-	flag.Parse()
-
-	if err := run(*configPath); err != nil {
+	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "yaa: %v\n", err)
 		os.Exit(1)
 	}

@@ -248,7 +248,7 @@ Provider、Tool、Skill、Prompt、权限等均应支持配置化。
 ```bash
 # 复制示例配置并启动（Win7 上直接双击/命令行运行 yaa.exe）
 cp yaa.example.yaml yaa.yaml   # 或:  yaa.exe config defaults > yaa.yaml
-./yaa -config yaa.yaml
+./yaa --config yaa.yaml
 ```
 
 开发进度与逐项实现清单见 `progress.md` 和 `docs/roadmap.md`。

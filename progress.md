@@ -3876,3 +3876,15 @@ plugin 52/52, session 58/58, skill 24/24, storage 23/23, tool 45/45
 - mcp-tools **v1.1.0**（合并 yolo + module path 修正后的主线首发）：4 平台产物，
   同法核验通过；v1.0.0/v0.1.x-rc* 历史 tag 保留未动
 - release notes 已注明「Win7 SP1 x64 实机待验证」的已知状态
+
+## #78 — CLI 迁移到 cobra（完整帮助树）
+- 引入 spf13/cobra v1.8.1（纯 Go，Go 1.20 兼容，不影响 Win7 单二进制/CGO=0）
+- `yaa -h/--help` 现在输出完整帮助树：用法、全部子命令（config/completion/help）、flags
+- `yaa config -h` / `yaa config <convert|defaults|migrate> -h` 逐级可查，flags 带默认值与必填校验
+  （--from/--to、--config 用 MarkFlagRequired）
+- 新增 `yaa --version`（cobra 自动，注入 Version/GitCommit/BuildTime）与 `completion` 补全
+- 根命令接受位置参数作为配置文件：`yaa ./yaa.yaml`（与 --config 等价）
+- **已知差异**：标准库 flag 支持的单横线长 flag `-config` 在 pflag 下不合法（被解析为
+  shorthand 组合），须用 `--config`；README/示例/测试脚本已同步更新
+- 回归：go test/vet（linux+windows）全绿，Win7 交叉编译 PE32+ x64 正常；
+  实测 `-h`/`--version`/三个 config 子命令/`--config` 与位置参数两种启动方式均通
