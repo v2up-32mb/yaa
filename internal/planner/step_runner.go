@@ -11,8 +11,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/imshuai/yaa/internal/provider"
-	"github.com/imshuai/yaa/internal/tool"
+	"github.com/v2up-32mb/yaa/internal/provider"
+	"github.com/v2up-32mb/yaa/internal/tool"
 )
 
 // 固定执行提示. docs §3.1 "固定执行提示作为 system message" 但未指定文本;
@@ -80,8 +80,8 @@ func (r AggregateStepRunner) runLLMStep(
 	// 用 Agent 配的 maxTokens 控制单次生成规模, runner 持该值 Agent 注入.
 	maxTokens := r.llmMaxTokens
 	req := &provider.ChatRequest{
-		Model:    r.llmModel,
-		Messages: []provider.Message{{Role: roleSystem, Content: llmStepSystemPrompt}, userMsg},
+		Model:     r.llmModel,
+		Messages:  []provider.Message{{Role: roleSystem, Content: llmStepSystemPrompt}, userMsg},
 		MaxTokens: &maxTokens,
 		// Tools 显式 nil; 不携带 Tool definitions (docs §3.1 + checklist "LLM Step 不携带 Tool definitions").
 	}
@@ -108,8 +108,8 @@ func outToolError(err error) map[string]any {
 type AggregateStepRunner struct {
 	Tools        *tool.Manager
 	Provider     provider.Provider
-	llmModel      string
-	llmMaxTokens  int
+	llmModel     string
+	llmMaxTokens int
 }
 
 // NewAggregateStepRunner 拒绝 nil Tools 与 nil Provider (tool step 与 llm step 都需要它们).

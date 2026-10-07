@@ -6,13 +6,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/imshuai/yaa/internal/config"
-	"github.com/imshuai/yaa/internal/metrics"
-	"github.com/imshuai/yaa/internal/tool"
+	"github.com/v2up-32mb/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/metrics"
+	"github.com/v2up-32mb/yaa/internal/tool"
 
 	"golang.org/x/exp/slog"
 )
-
 
 // TestSafeEndpoint 验证日志脱敏 (docs/mcp/observability.md §1 末段).
 func TestSafeEndpoint(t *testing.T) {
@@ -46,7 +45,6 @@ func TestEndpointFor(t *testing.T) {
 	}
 }
 
-
 // capturingHandler 把所有 slog.Record 的 msg 收集到切片, 线程安全.
 type capturingHandler struct {
 	mu     sync.Mutex
@@ -70,7 +68,7 @@ func (h *capturingHandler) Handle(r slog.Record) error {
 	return nil
 }
 func (h *capturingHandler) WithAttrs(attrs []slog.Attr) slog.Handler { return h }
-func (h *capturingHandler) WithGroup(_ string) slog.Handler      { return h }
+func (h *capturingHandler) WithGroup(_ string) slog.Handler          { return h }
 
 // TestManagerEmitsConnectingAndConnectedEvents 验证 docs/mcp/observability.md §1
 // 在 stdio auto_start server 启动时 emit mcp.server.connecting 和 mcp.server.connected 事件.
@@ -134,7 +132,7 @@ func TestManagerEmitsErrorEventOnBadStdioCommand(t *testing.T) {
 		Name:      "broken",
 		Transport: "stdio",
 		Command:   "/nonexistent/binary",
-		AutoStart:  true,
+		AutoStart: true,
 	}}}
 	m, err := NewManager(cfg, buildToolManager(t), logger)
 	if err != nil {
@@ -223,7 +221,7 @@ func TestManagerMetricsExposeReconnectErrorEvent(t *testing.T) {
 			Name:      "broken2",
 			Transport: "stdio",
 			Command:   "/nonexistent/binary",
-			AutoStart:  true,
+			AutoStart: true,
 		}},
 		Reconnect: config.MCPReconnectConfig{Enabled: false, InitialDelay: 10 * 1e9, MaxDelay: 10 * 1e9},
 	}

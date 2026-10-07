@@ -57,14 +57,14 @@ Plugin SDK 可把该进程内接口适配到生成的 gRPC Server，但 Runtime 
 
 ## 3. IDL 服务
 
-**当前状态：已落地 `api/plugin/v1/plugin.proto`，该文件是唯一 wire contract。下面代码块降为非权威镜像，仅用于阅读上下文；不一致时以 proto 文件为准。CI 必须校验 proto、生成物和保留镜像的一致性。仓库模块路径 `github.com/imshuai/yaa`。**
+**当前状态：已落地 `api/plugin/v1/plugin.proto`，该文件是唯一 wire contract。下面代码块降为非权威镜像，仅用于阅读上下文；不一致时以 proto 文件为准。CI 必须校验 proto、生成物和保留镜像的一致性。仓库模块路径 `github.com/v2up-32mb/yaa`。**
 
 ```proto
 syntax = "proto3";
 
 package yaa.plugin.v1;
 
-option go_package = "github.com/imshuai/yaa/pkg/pluginrpc/gen;pluginv1";
+option go_package = "github.com/v2up-32mb/yaa/pkg/pluginrpc/gen;pluginv1";
 
 import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";

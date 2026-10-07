@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/imshuai/yaa/internal/memory"
+	"github.com/v2up-32mb/yaa/internal/memory"
 )
 
 // primary 是 map 的复合主键，与 MemoryItem 的 (AgentID, Layer, SessionID, Key) 一致。

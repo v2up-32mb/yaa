@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/imshuai/yaa/internal/config"
-	"github.com/imshuai/yaa/internal/tool"
+	"github.com/v2up-32mb/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/tool"
 )
 
 // 构造一个最小 default cfg + 1 个 provider 含 api_key (验证脱敏).

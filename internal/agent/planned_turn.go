@@ -6,11 +6,11 @@ import (
 	"errors"
 	"fmt"
 
-	ctxwindow "github.com/imshuai/yaa/internal/context"
-	mm "github.com/imshuai/yaa/internal/memory"
-	"github.com/imshuai/yaa/internal/planner"
-	"github.com/imshuai/yaa/internal/provider"
-	"github.com/imshuai/yaa/internal/session"
+	ctxwindow "github.com/v2up-32mb/yaa/internal/context"
+	mm "github.com/v2up-32mb/yaa/internal/memory"
+	"github.com/v2up-32mb/yaa/internal/planner"
+	"github.com/v2up-32mb/yaa/internal/provider"
+	"github.com/v2up-32mb/yaa/internal/session"
 )
 
 // addUsage 把 src 逐字段累加到 dst; 每次 HandleTurn 栈独占累计器, 不进 Agent Manager 字段
@@ -128,10 +128,10 @@ func (m *Manager) finishPlannedTurn(
 	if m.deps.Memory != nil {
 		policy := m.resolveMemoryPolicy(a)
 		search := mm.SearchRequest{
-			Scope:          mm.Scope{AgentID: a.id, SessionID: req.SessionID, Layer: mm.LayerLongTerm},
-			Query:          req.Content,
-			Limit:          0,
-			IncludeGlobal:  true,
+			Scope:         mm.Scope{AgentID: a.id, SessionID: req.SessionID, Layer: mm.LayerLongTerm},
+			Query:         req.Content,
+			Limit:         0,
+			IncludeGlobal: true,
 		}
 		results, merr := m.deps.Memory.Search(ctx, policy, search)
 		if merr == nil {
@@ -259,5 +259,3 @@ func renderPlanResultForFinal(plan planner.Plan, result planner.PlanResult) (str
 	}
 	return string(b), nil
 }
-
-

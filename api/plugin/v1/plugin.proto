@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package yaa.plugin.v1;
 
-option go_package = "github.com/imshuai/yaa/pkg/pluginrpc/gen;pluginv1";
+option go_package = "github.com/v2up-32mb/yaa/pkg/pluginrpc/gen;pluginv1";
 
 import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";

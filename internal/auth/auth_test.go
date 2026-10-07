@@ -9,7 +9,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
-	"github.com/imshuai/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/config"
 )
 
 // ====== Identity / context ======
@@ -92,7 +92,7 @@ func TestStaticAuthenticatorMiss(t *testing.T) {
 
 func TestStaticAuthenticatorConstructorRejectsBad(t *testing.T) {
 	cases := []struct {
-		name  string
+		name   string
 		tokens []config.TokenConfig
 	}{
 		{"empty name", []config.TokenConfig{{Name: "", Token: "tok-xxxxxxxxxxxx", Roles: []string{"viewer"}}}},
@@ -177,8 +177,8 @@ func TestJWTHappy(t *testing.T) {
 func TestJWTRejectsBadAlg(t *testing.T) {
 	// 用 none 方法伪造，必须被拒（伪造 secret）
 	tok := jwt.NewWithClaims(jwt.SigningMethodNone, jwtClaims{
-		Name:  "x",
-		Roles: []string{"viewer"},
+		Name:             "x",
+		Roles:            []string{"viewer"},
 		RegisteredClaims: jwt.RegisteredClaims{Subject: "u", Issuer: "yaa-runtime", Audience: []string{"yaa-client"}, ExpiresAt: jwt.NewNumericDate(time.Now().Add(1 * time.Hour))},
 	})
 	s, _ := tok.SignedString(jwt.UnsafeAllowNoneSignatureType)
@@ -221,7 +221,7 @@ func TestJWTRejectsExpired(t *testing.T) {
 		secret[i] = byte('a' + i%26)
 	}
 	claims := jwtClaims{
-		Name:  "alice", Roles: []string{"viewer"},
+		Name: "alice", Roles: []string{"viewer"},
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject: "u", Issuer: "yaa-runtime", Audience: []string{"yaa-client"},
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(-1 * time.Hour)),

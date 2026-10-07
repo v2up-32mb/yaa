@@ -6,14 +6,14 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/imshuai/yaa/internal/config"
-	ctxwindow "github.com/imshuai/yaa/internal/context"
-	"github.com/imshuai/yaa/internal/provider"
-	"github.com/imshuai/yaa/internal/session"
-	"github.com/imshuai/yaa/internal/storage"
-	"github.com/imshuai/yaa/internal/tool"
-	mm "github.com/imshuai/yaa/internal/memory"
-	"github.com/imshuai/yaa/internal/memory/memstore"
+	"github.com/v2up-32mb/yaa/internal/config"
+	ctxwindow "github.com/v2up-32mb/yaa/internal/context"
+	mm "github.com/v2up-32mb/yaa/internal/memory"
+	"github.com/v2up-32mb/yaa/internal/memory/memstore"
+	"github.com/v2up-32mb/yaa/internal/provider"
+	"github.com/v2up-32mb/yaa/internal/session"
+	"github.com/v2up-32mb/yaa/internal/storage"
+	"github.com/v2up-32mb/yaa/internal/tool"
 )
 
 // TestAgentCurrentCfgReadsFromReloader 覆盖 docs/config checklist 行58 集成:

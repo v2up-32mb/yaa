@@ -3,7 +3,7 @@ package storage
 import (
 	"fmt"
 
-	"github.com/imshuai/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/config"
 )
 
 // New 根据配置创建根 Storage：type 为 sqlite 或 memory；未知类型返回错误。

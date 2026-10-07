@@ -56,7 +56,7 @@ type DiscoveryDiagnostic struct {
 	Err        error             // 始终非 nil
 }
 
-func (d DiscoveryDiagnostic) Error() string  { return d.Err.Error() }
+func (d DiscoveryDiagnostic) Error() string { return d.Err.Error() }
 func (d DiscoveryDiagnostic) Unwrap() error { return d.Err }
 
 // PluginState 是 Plugin 的运行时状态. docs/plugin/manager.md §1.
@@ -88,7 +88,7 @@ const (
 
 // HealthResponse 是 Health RPC 的响应.
 type HealthResponse struct {
-	Level     string    // healthy | degraded | unhealthy
+	Level     string // healthy | degraded | unhealthy
 	Message   string
 	Timestamp time.Time
 }
@@ -128,7 +128,7 @@ type ToolError struct {
 // ToolResponse 是 InvokeTool RPC 的响应.
 // outcome 必须恰好有 result 或 error 之一.
 type ToolResponse struct {
-	RequestID string       // 必须精确回显请求 ID, 不一致 → ErrPluginProtocolIncompatible
+	RequestID string         // 必须精确回显请求 ID, 不一致 → ErrPluginProtocolIncompatible
 	Result    map[string]any // 成功结果 (含 content/is_error/meta)
 	Error     *ToolError     // 非 nil 时为业务错误分支
 }

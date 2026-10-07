@@ -7,7 +7,7 @@ import (
 
 	"golang.org/x/exp/slog"
 
-	"github.com/imshuai/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/config"
 )
 
 // New 按 log 配置创建 slog.Logger 并返回一个 closer（文件输出时在退出时调用，stderr/stdout 时为 noop）。

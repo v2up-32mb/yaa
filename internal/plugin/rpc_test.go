@@ -9,10 +9,10 @@ import (
 
 // fakeRPC 是 pluginRPCInterface 的测试 mock.
 type fakeRPC struct {
-	closeMu   sync.Mutex
-	closeCalls int
+	closeMu      sync.Mutex
+	closeCalls   int
 	handshakeErr error
-	closeErr error
+	closeErr     error
 }
 
 func (f *fakeRPC) Handshake(ctx context.Context, pv, id string) (HandshakeResponse, error) {
@@ -55,9 +55,9 @@ func TestRPCClientTerminateIdempotent(t *testing.T) {
 	rpc := &fakeRPC{}
 	cleanupCalled := 0
 	c := &RPCClient{
-		rpc:      rpc,
-		Exited:   closedChan(),
-		cleanup:  func() { cleanupCalled++ },
+		rpc:     rpc,
+		Exited:  closedChan(),
+		cleanup: func() { cleanupCalled++ },
 	}
 	if err := c.Terminate(); err != nil {
 		t.Fatal(err)

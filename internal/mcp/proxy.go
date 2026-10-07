@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/imshuai/yaa/internal/tool"
+	"github.com/v2up-32mb/yaa/internal/tool"
 
 	"golang.org/x/exp/slog"
 )
@@ -52,9 +52,9 @@ type MCPToolProxy struct {
 	// 可选 observability 注入 (SetObs): logger 用于 docs §1 mcp.tool.called 事件;
 	// m.okMetrics 用于 docs §2 yaa_mcp_tool_calls_total{server,tool,result}
 	// 与 yaa_mcp_tool_call_duration_seconds{server,tool}. nil 时接入点 nop.
-	logger      *slog.Logger
-	metrics     *mcpMetrics
-	localName   string // 远端 original tool 名 (docs §1 tool 字段; 低基数 label)
+	logger    *slog.Logger
+	metrics   *mcpMetrics
+	localName string // 远端 original tool 名 (docs §1 tool 字段; 低基数 label)
 }
 
 // NewMCPToolProxy 构造稳定 Proxy。handle 不可为 nil；description 不可为空（由 Manager 校验）。

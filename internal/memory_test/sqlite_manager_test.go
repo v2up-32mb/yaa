@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	mm "github.com/imshuai/yaa/internal/memory"
-	"github.com/imshuai/yaa/internal/memory/sqlitestore"
+	mm "github.com/v2up-32mb/yaa/internal/memory"
+	"github.com/v2up-32mb/yaa/internal/memory/sqlitestore"
 )
 
 // newSQLiteManager 构造一个用 SQLite backend 的真实 Manager（fake clock），临时文件已隔离。
@@ -101,7 +101,7 @@ func TestSQLiteManagerSearchKeywordSubstringScopeAndGlobal(t *testing.T) {
 	results, err := m.Search(ctx, policy, mm.SearchRequest{
 		Scope:         mm.Scope{AgentID: "agent-1", SessionID: "s1", Layer: mm.LayerLongTerm},
 		Query:         "split",
-		IncludeGlobal:  true,
+		IncludeGlobal: true,
 		Limit:         0,
 	})
 	if err != nil {
@@ -120,9 +120,9 @@ func TestSQLiteManagerSearchKeywordSubstringScopeAndGlobal(t *testing.T) {
 
 	// session s1 只搜本地 scope (IncludeGlobal=false) 只命中 k1，不命中 global。
 	results, err = m.Search(ctx, policy, mm.SearchRequest{
-		Scope:        mm.Scope{AgentID: "agent-1", SessionID: "s1", Layer: mm.LayerLongTerm},
-		Query:        "split",
-		Limit:        0,
+		Scope: mm.Scope{AgentID: "agent-1", SessionID: "s1", Layer: mm.LayerLongTerm},
+		Query: "split",
+		Limit: 0,
 	})
 	if err != nil {
 		t.Fatalf("search2: %v", err)
@@ -247,4 +247,3 @@ func contains(items []string, want string) bool {
 	}
 	return false
 }
-

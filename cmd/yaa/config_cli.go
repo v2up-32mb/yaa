@@ -8,7 +8,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/imshuai/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/config"
 )
 
 // runConfigCLI 路由 yaa config <subcmd>.

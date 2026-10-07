@@ -229,8 +229,24 @@ Provider、Tool、Skill、Prompt、权限等均应支持配置化。
 
 ## 当前状态
 
-Yaa! 当前仍处于架构设计阶段。
+**已进入实现阶段**（Phase 1 ~ 4 推进中，遵循 Documentation-Driven Development）。
 
-整个项目采用 **Documentation-Driven Development（文档驱动开发）**。
+已可用：
 
-在完成整体架构设计之前，不会进入正式开发阶段。
+- 单二进制 Runtime（Go 1.20 · CGO_ENABLED=0 · Windows 7 SP1 x64 / Linux / macOS 交叉编译验证通过）
+- Remote API：HTTP / WebSocket / SSE，统一 envelope，Auth（static token + JWT + RBAC）
+- Provider：openai（含 DeepSeek/Qwen 等 OpenAI 兼容网关）、claude、gemini、ollama
+- Agent 完整对话回路：流式 + 非流式、Tool loop（max_tool_rounds）、Planner（LLM plan + step 执行）
+- Tool：shell / http / file_read / file_write / file_list / file_delete / config_query / config_reload / introspection 系列
+- Skill 系统、Session / Context（hybrid summarize）、Memory（SQLite + 可选向量）、原生 MCP 客户端/服务器、Plugin（gRPC RPC，Unix Socket / Windows loopback TCP）
+- 默认 Web UI（`http://127.0.0.1:8080`）
+
+快速开始：
+
+```bash
+# 复制示例配置并启动（Win7 上直接双击/命令行运行 yaa.exe）
+cp yaa.example.yaml yaa.yaml   # 或:  yaa.exe config defaults > yaa.yaml
+./yaa -config yaa.yaml
+```
+
+开发进度与逐项实现清单见 `progress.md` 和 `docs/roadmap.md`。

@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/imshuai/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/config"
 )
 
 // openaiProvider 适配所有 OpenAI-compatible Chat Completions 服务。

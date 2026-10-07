@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/imshuai/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/config"
 )
 
 func newTestOpenAI(t *testing.T, handler http.Handler) (*openaiProvider, *httptest.Server) {
@@ -314,7 +314,7 @@ func TestEstimateInputTokensFullRequest(t *testing.T) {
 			{Function: ToolFunction{Name: "get_weather", Description: "Get current weather", Parameters: json.RawMessage(`{"type":"object","properties":{"location":{"type":"string"}}}`)}},
 		},
 		ResponseFormat: &ResponseFormat{Type: "json_schema", Name: "weather_out", JSONSchema: json.RawMessage(`{"type":"object"}`)},
-		Extra: map[string]any{"user_id": "alice123"},
+		Extra:          map[string]any{"user_id": "alice123"},
 	})
 	if err != nil {
 		t.Fatalf("err: %v", err)

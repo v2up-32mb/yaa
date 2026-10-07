@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/imshuai/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/config"
 )
 
 func newTestClaude(t *testing.T, handler http.Handler) (*claudeProvider, *httptest.Server) {

@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/imshuai/yaa/internal/config"
-	"github.com/imshuai/yaa/internal/metrics"
-	"github.com/imshuai/yaa/internal/provider"
-	"github.com/imshuai/yaa/internal/storage"
+	"github.com/v2up-32mb/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/metrics"
+	"github.com/v2up-32mb/yaa/internal/provider"
+	"github.com/v2up-32mb/yaa/internal/storage"
 )
 
 // fakeClock 控制 now。

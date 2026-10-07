@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/imshuai/yaa/internal/config"
-	"github.com/imshuai/yaa/internal/mcp"
-	"github.com/imshuai/yaa/internal/provider"
-	"github.com/imshuai/yaa/internal/tool"
+	"github.com/v2up-32mb/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/mcp"
+	"github.com/v2up-32mb/yaa/internal/provider"
+	"github.com/v2up-32mb/yaa/internal/tool"
 )
 
 // newMCPListEmptyManager 构造空 Servers 的 MCP Manager 给 unit test, 不调 Prepare/Activate 以保持零副作用.

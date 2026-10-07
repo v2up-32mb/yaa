@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/imshuai/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/config"
 )
 
 // newStreamableHTTPTestServer 构造启动 StreamableHTTPServer 的 MCPServer + 返 base URL + cleanup.

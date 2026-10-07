@@ -3,7 +3,7 @@ package api
 import (
 	"net/http"
 
-	"github.com/imshuai/yaa/internal/mcp"
+	"github.com/v2up-32mb/yaa/internal/mcp"
 )
 
 // mcpServerListData — GET /api/v1/mcp/servers 响应 data 字段（docs/mcp/integration.md §9）：

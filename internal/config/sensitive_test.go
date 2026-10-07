@@ -20,10 +20,10 @@ func TestIsEnvRef(t *testing.T) {
 		{"", false},
 		{"sk-abc123", false},
 		{"${}", false},
-		{"${1VAR}", false},   // 首字母不能数字
-		{"${VAR", false},     // 不闭合
-		{"VAR}", false},      // 不开始
-		{"${VAR-}", false},   // 单独 - 不是 :-分隔
+		{"${1VAR}", false}, // 首字母不能数字
+		{"${VAR", false},   // 不闭合
+		{"VAR}", false},    // 不开始
+		{"${VAR-}", false}, // 单独 - 不是 :-分隔
 		{"prefix${VAR}", false},
 		{"${VAR}suffix", false},
 	}

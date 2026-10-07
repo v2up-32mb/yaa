@@ -35,7 +35,7 @@ type sseJob struct {
 	id      uint64
 	method  string
 	params  map[string]any
-	notif   bool // notification 不返 id/req
+	notif   bool     // notification 不返 id/req
 	content *Message // 直接推送的预设 message (initialize / ping)
 }
 
@@ -353,4 +353,3 @@ func TestReadSSEFrameCompliance(t *testing.T) {
 		})
 	}
 }
-

@@ -3,9 +3,9 @@ package api
 import (
 	"time"
 
-	"github.com/imshuai/yaa/internal/agent"
-	"github.com/imshuai/yaa/internal/provider"
-	"github.com/imshuai/yaa/internal/session"
+	"github.com/v2up-32mb/yaa/internal/agent"
+	"github.com/v2up-32mb/yaa/internal/provider"
+	"github.com/v2up-32mb/yaa/internal/session"
 )
 
 // ConversationFrame 是 SSE/WS 的唯一 wire DTO，对应 docs/remote-api/conversation.md。

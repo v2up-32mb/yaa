@@ -10,7 +10,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/imshuai/yaa/internal/provider"
+	"github.com/v2up-32mb/yaa/internal/provider"
 )
 
 // providerSafeToolName 是 Provider-safe alias 的合法集合（docs/tool/provider.md §1）。
@@ -196,7 +196,7 @@ func (m *Manager) ToToolDefs(agentID string, history []provider.Message) (*Provi
 				}
 				alias := providerToolAlias(name)
 				if other, dup := aliasToCanonical[alias]; dup && other != name {
-				m.recordAliasProjErr("collision")
+					m.recordAliasProjErr("collision")
 					return nil, fmt.Errorf("%w: history %q and %q alias to %q", ErrToolAliasCollision, other, name, alias)
 				}
 				// history-only: 不写 aliasToCanonical (executable 反查表), 仅 union map.

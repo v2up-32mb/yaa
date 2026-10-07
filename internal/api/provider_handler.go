@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"sort"
 
-	"github.com/imshuai/yaa/internal/provider"
+	"github.com/v2up-32mb/yaa/internal/provider"
 )
 
 // providerSummaryDTO 是 GET /api/v1/providers 列表 item（docs ProviderSummary）：
@@ -19,12 +19,12 @@ type providerSummaryDTO struct {
 // providerViewDTO 是 GET /api/v1/providers/{id} 详情（docs ProviderView）。
 // api_key/base_url/extra 始终省略。
 type providerViewDTO struct {
-	ID            string                  `json:"id"`
-	Type          string                  `json:"type"`
-	Timeout       string                  `json:"timeout"`
-	MaxRetries    int                     `json:"max_retries"`
-	RetryInterval string                  `json:"retry_interval"`
-	Models        []provider.ModelInfo    `json:"models"`
+	ID            string               `json:"id"`
+	Type          string               `json:"type"`
+	Timeout       string               `json:"timeout"`
+	MaxRetries    int                  `json:"max_retries"`
+	RetryInterval string               `json:"retry_interval"`
+	Models        []provider.ModelInfo `json:"models"`
 }
 
 type providerListData struct {

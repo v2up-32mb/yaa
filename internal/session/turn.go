@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/imshuai/yaa/internal/provider"
+	"github.com/v2up-32mb/yaa/internal/provider"
 )
 
 // Turn 只在 RunTurn callback 生命周期内有效；

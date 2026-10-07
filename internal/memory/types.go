@@ -105,12 +105,12 @@ type VectorSearchRequest struct {
 
 // 输入字段固定上限（docs/memory/lifecycle.md §2 + README §4 列表）。
 const (
-	MaxAgentIDLen  = 128
-	MaxSessionIDLen = 128
-	MaxKeyLen      = 256
-	MaxContentLen  = 65536
-	MaxMetadataLen = 16384
-	MaxSearchLimit = 100
+	MaxAgentIDLen         = 128
+	MaxSessionIDLen       = 128
+	MaxKeyLen             = 256
+	MaxContentLen         = 65536
+	MaxMetadataLen        = 16384
+	MaxSearchLimit        = 100
 	MaxDeleteExpiredLimit = 10000
 )
 

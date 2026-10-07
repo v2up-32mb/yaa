@@ -6,7 +6,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
-	"github.com/imshuai/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/config"
 )
 
 // JWTAuthenticator 仅校验外部签发的 HS256 JWT；v1 不签发、刷新或撤销

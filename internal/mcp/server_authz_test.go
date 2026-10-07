@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/imshuai/yaa/internal/config"
-	"github.com/imshuai/yaa/internal/provider"
-	"github.com/imshuai/yaa/internal/tool"
+	"github.com/v2up-32mb/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/provider"
+	"github.com/v2up-32mb/yaa/internal/tool"
 )
 
 // buildRestrictedToolManager 构造带 1 个允许 "echo" 不允许 "private" 的 Tool Manager.
@@ -103,9 +103,9 @@ func TestNewMCPServerAcceptsAllExposedToolsInAllowlist(t *testing.T) {
 // fakeLsTool 是与 fakeEchoTool 并列的最小 Tool, 用于 allowlist 正向测试多 tool 场景.
 type fakeLsTool struct{}
 
-func (fakeLsTool) Name() string                                   { return "ls" }
-func (fakeLsTool) Description() string                            { return "list mock" }
-func (fakeLsTool) Parameters() json.RawMessage                    { return json.RawMessage(`{"type":"object"}`) }
+func (fakeLsTool) Name() string                { return "ls" }
+func (fakeLsTool) Description() string         { return "list mock" }
+func (fakeLsTool) Parameters() json.RawMessage { return json.RawMessage(`{"type":"object"}`) }
 func (fakeLsTool) Execute(ctx context.Context, scope tool.ExecutionScope, params map[string]any) (tool.ToolResult, error) {
 	return tool.ToolResult{Content: "ls ok"}, nil
 }

@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/imshuai/yaa/internal/config"
-	mm "github.com/imshuai/yaa/internal/memory"
-	"github.com/imshuai/yaa/internal/memory/embedding"
-	"github.com/imshuai/yaa/internal/memory/memstore"
-	"github.com/imshuai/yaa/internal/memory/vector"
+	"github.com/v2up-32mb/yaa/internal/config"
+	mm "github.com/v2up-32mb/yaa/internal/memory"
+	"github.com/v2up-32mb/yaa/internal/memory/embedding"
+	"github.com/v2up-32mb/yaa/internal/memory/memstore"
+	"github.com/v2up-32mb/yaa/internal/memory/vector"
 )
 
 // newVectorManager 构造一个用真实 HTTP embedder 和 exact cosine VectorIndex 的 Manager。
@@ -77,10 +77,10 @@ func newEmbeddingServer(t *testing.T, vectors map[string][]float32) *httptest.Se
 // vectorEnabledPolicy 是包含 vector 的 policy。
 func vectorEnabledPolicy(dim int) config.MemoryPolicy {
 	return config.MemoryPolicy{
-		Enabled:         true,
-		MaxItems:        3,
-		EvictionPolicy:  "fifo",
-		Vector:          config.MemoryVectorConfig{
+		Enabled:        true,
+		MaxItems:       3,
+		EvictionPolicy: "fifo",
+		Vector: config.MemoryVectorConfig{
 			Enabled:             true,
 			SimilarityThreshold: 0.5,
 			TopK:                5,

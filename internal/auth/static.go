@@ -4,7 +4,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 
-	"github.com/imshuai/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/config"
 )
 
 // StaticAuthenticator 基于 SHA-256(token) 索引的静态 Token 认证（docs/auth/authentication.md §3.1）。

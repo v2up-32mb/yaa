@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/imshuai/yaa/internal/memory"
+	"github.com/v2up-32mb/yaa/internal/memory"
 )
 
 // newTestStore 为每个测试创建一个临时 SQLite 文件后端。
@@ -160,7 +160,7 @@ func TestSQLiteStoreSearchExcludesExpired(t *testing.T) {
 	expT := t0.Add(time.Hour)
 	mustPut(t, s, memory.MemoryItem{
 		AgentID: "a1", Layer: memory.LayerLongTerm, SessionID: "s1", Key: "k1",
-		Content: "live",
+		Content:   "live",
 		ExpiresAt: &expT,
 	}, t0)
 	res, err := s.Search(context.Background(), memory.SearchRequest{

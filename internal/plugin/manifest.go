@@ -35,9 +35,10 @@ func LoadManifest(path string) (Manifest, error) {
 
 // ValidateManifest 校验 Manifest 字段完整性和规则.
 // docs/plugin/checklist.md:
-//   行10: 完整字段校验 + 严格未知字段校验 (LoadManifest 用 KnownFields(true))
-//   行11: provides[] 只接受 tool, 且 name/description/schema 必填
-//   行8: protocol_version: "1" 只接受
+//
+//	行10: 完整字段校验 + 严格未知字段校验 (LoadManifest 用 KnownFields(true))
+//	行11: provides[] 只接受 tool, 且 name/description/schema 必填
+//	行8: protocol_version: "1" 只接受
 func ValidateManifest(m Manifest) error {
 	var errs []string
 

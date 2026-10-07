@@ -8,15 +8,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/imshuai/yaa/internal/agent"
-	"github.com/imshuai/yaa/internal/config"
-	ctxwindow "github.com/imshuai/yaa/internal/context"
-	"github.com/imshuai/yaa/internal/mcp"
-	"github.com/imshuai/yaa/internal/provider"
-	"github.com/imshuai/yaa/internal/session"
-	"github.com/imshuai/yaa/internal/storage"
-	"github.com/imshuai/yaa/internal/tool"
-	"github.com/imshuai/yaa/internal/tool/builtin"
+	"github.com/v2up-32mb/yaa/internal/agent"
+	"github.com/v2up-32mb/yaa/internal/config"
+	ctxwindow "github.com/v2up-32mb/yaa/internal/context"
+	"github.com/v2up-32mb/yaa/internal/mcp"
+	"github.com/v2up-32mb/yaa/internal/provider"
+	"github.com/v2up-32mb/yaa/internal/session"
+	"github.com/v2up-32mb/yaa/internal/storage"
+	"github.com/v2up-32mb/yaa/internal/tool"
+	"github.com/v2up-32mb/yaa/internal/tool/builtin"
 )
 
 // agentTestEnv 构造一个含 1 个 agent 的真实 agent.Manager + Session Provider + Provider Manager + Tool Manager 注入的 Server。

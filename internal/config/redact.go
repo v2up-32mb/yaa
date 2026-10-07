@@ -115,6 +115,7 @@ func redactKnownSecrets(root map[string]any) {
 //   - object/array 保持结构
 //   - scalar string/bool/number 替为 "***"
 //   - null 保持 null
+//
 // fail-closed：开放 Map 全部 scalar 都视为敏感值脱敏，不按 key 猜。
 func redactOpenMaps(root map[string]any) {
 	// mcp.servers[*].headers / env

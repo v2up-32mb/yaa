@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	mm "github.com/imshuai/yaa/internal/memory"
+	mm "github.com/v2up-32mb/yaa/internal/memory"
 )
 
 // TestManagerUsesExplicitPolicyPerOp 覆盖 docs/memory checklist 行53: Manager 每次操作接受显式 policy,

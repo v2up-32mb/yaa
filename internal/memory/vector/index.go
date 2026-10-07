@@ -12,7 +12,7 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/imshuai/yaa/internal/memory"
+	"github.com/v2up-32mb/yaa/internal/memory"
 )
 
 // entry 是 index 切片中的单条目（ref + 向量）。

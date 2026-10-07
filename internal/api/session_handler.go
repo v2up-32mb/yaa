@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/imshuai/yaa/internal/config"
-	"github.com/imshuai/yaa/internal/session"
-	"github.com/imshuai/yaa/internal/storage"
+	"github.com/v2up-32mb/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/session"
+	"github.com/v2up-32mb/yaa/internal/storage"
 )
 
 // sessionProvider 取注入的 SessionProvider；nil 返 50301 表示 Runtime 未就绪。

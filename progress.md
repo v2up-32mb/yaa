@@ -494,7 +494,7 @@ Agent turn 内按 docs/agent.md §4 + docs/tool/provider.md §3-§5 完整走 To
   - `const memoryInjectMaxBytes = 32 * 1024`（文档 §3 固定上限，非 MemoryConfig 字段）。
   - `formatMemoryResults(results) (content string, dropped int)`：按 Search 返回顺序输出（不重新排序），只读 Content + Key，不输出 Score 与 Metadata（v1 白名单未定避免泄露敏感字段）；`escapeMemoryText` 固定转义 `\n` `\t` `\r` 删除其他 0x00-0x1F ASCII 控制字符防伪造 role/Tool protocol；32 KiB UTF-8 上限，超限丢弃最末未追加项并返回 dropped 计数（仅用于日志，不修改 Session）。
   - `indexOfResult` 删去（直接 `for i, r := range` 用 i 算 dropped）。
-- `internal/agent/handle_turn.go`：import 加 `errors` + `mm "github.com/imshuai/yaa/internal/memory"`；在 `runDirectTurn` 每轮 canonical messages 组装中、Skill system messages 之后、`for _, sm := range snap.Messages` 之前插入 memory 注入块（仅 `rounds==0 && m.deps.Memory != nil`）：
+- `internal/agent/handle_turn.go`：import 加 `errors` + `mm "github.com/v2up-32mb/yaa/internal/memory"`；在 `runDirectTurn` 每轮 canonical messages 组装中、Skill system messages 之后、`for _, sm := range snap.Messages` 之前插入 memory 注入块（仅 `rounds==0 && m.deps.Memory != nil`）：
   - `policy := m.resolveMemoryPolicy(a)`
   - `Search(ctx, policy, mm.SearchRequest{Scope: {AgentID, SessionID: req.SessionID, Layer: LayerLongTerm}, Query: req.Content, Limit: 0, IncludeGlobal: true})`
   - `merr != nil && !errors.Is(merr, mm.ErrMemoryDisabled)` → `return TurnResult{Usage: totalUsage}, fmt.Errorf("recall memory: %w", merr)` 阻断 turn（除 ErrMemoryDisabled 外一律阻断，符合 §2 step1 "不返回伪造空结果"）
@@ -546,7 +546,7 @@ Agent turn 内按 docs/agent.md §4 + docs/tool/provider.md §3-§5 完整走 To
   - `case "sqlite"`: `sqlitestore.New(rt.cfg.Memory.Storage.Path)`，失败 → `rollback()` + `return fmt.Errorf("runtime: memory sqlite store: %w", sErr)` 让 Runtime Not Ready（docs §2: 启动失败要正确传播）。
   - `default` (含 "memory" 与未知/空值): `memstore.New()`，未知 type 仅 warn，"memory"/"" warn "durable=false"。
   - 注释更新去掉"v1 阶段默认 in-memory"（已能配置 SQLite）。
-- import 加 `"github.com/imshuai/yaa/internal/memory/sqlitestore"`。
+- import 加 `"github.com/v2up-32mb/yaa/internal/memory/sqlitestore"`。
 
 ### `internal/runtime/runtime_test.go` 增 2 例
 - `TestRuntimeMemorySQLiteBackendStart`：`cfg.Memory.Enabled=true` + `Storage.Type=sqlite` + tempdir path → Start 后 `health.Components["memory"]=="ready"` + `rt.memory != nil` + 文件被实际创建。
@@ -587,7 +587,7 @@ Agent turn 内按 docs/agent.md §4 + docs/tool/provider.md §3-§5 完整走 To
 - happy 2D token "a"/"b" 返 [1,0]/[0,1] 验证 + Bearer header + path /embeddings + model + input 长度匹配；non-2xx → ErrMemoryEmbeddingFailed；dimension mismatch → ErrMemoryEmbeddingDimension；zero vector → ErrMemoryEmbeddingZero；malformed json → ErrMemoryEmbeddingFailed；data count mismatch → ErrMemoryEmbeddingFailed；empty inputs 返 nil no call；New 拒绝 empty base_url/zero dimension；timeout<=0 fallback 30s 通过构造（New 成功）。
 
 ### `internal/runtime/runtime.go` Vector 启动注入
-- import 加 `"github.com/imshuai/yaa/internal/memory/embedding"` + `"github.com/imshuai/yaa/internal/memory/vector"`。
+- import 加 `"github.com/v2up-32mb/yaa/internal/memory/embedding"` + `"github.com/v2up-32mb/yaa/internal/memory/vector"`。
 - Memory Manager 构造段：`if rt.cfg.Memory.Vector.Enabled { embedding.New(rt.cfg.Memory.Embedding) + vector.Factory() }`；embedder 构造失败 → `rt.rollback()` + `return fmt.Errorf(...)` 让 Runtime Not Ready（cfg 由 validation 保证合法，正常路径不会失败）。
 - `mm.NewManager(ms, embedder, indexFactory, mm.SystemClock{}, nil)` 把 embedder/indexFactory 注入，让 Manager 走 vector 路径用真实 embedder。
 - 启动期对每个 `policy.Vector.Enabled && policy.Enabled` 的 Agent `mmMgr.Reindex(ctx, policy, ag.ID)`；失败仅 `rt.logger.Warn` 让 health 表示 degraded 但 Runtime 不阻断（docs/architecture.md §4: Reindex 失败留 degraded 由后续 Reindex 修复）。**架构 §4 §4「普通操作成功不会清除历史 degraded，只有完整 Reindex 才置 ready」**：putIndex 不再顺手清 status，让 Reindex 成为唯一 ready 来源；本步严格遵守这一契约。
@@ -2926,7 +2926,7 @@ go test -count=1 -timeout 300s ./...   # 24 包全绿 (含 internal/context 0.02
 - 测试 skill_test.go:
   - `TestLoadWithMetricsRecordsSuccess`: LoadWith 后 yaa_skill_load_total{ok}>=1 + yaa_skill_current{loaded}==1.
   - `TestSetMetricsResolveForAgentRecords`: SetMetrics + ResolveForAgent 后 yaa_skill_resolve_total{ok}>=1 + yaa_skill_resolved_count Count>=1.
-  - import 加 `github.com/imshuai/yaa/internal/metrics` (合并到已有 block).
+  - import 加 `github.com/v2up-32mb/yaa/internal/metrics` (合并到已有 block).
 
 ### 决策记录
 - **SQLite closed 用 atomic.Bool 不用 mu**: Go 1.20 sync/atomic.Bool (Go 1.19 引入); SQLite 方法无持锁序列化依赖 sql.DB.SetMaxOpenConns(1), atomic 读取比 mu 更轻, 与 cleanup goroutine 不互斥 (cleanup 仅删过期行).
@@ -3010,7 +3010,7 @@ go test -count=1 -timeout 300s ./...   # 24 包全绿 (含 internal/storage 0.46
   - `TestMetricsRunTurnWaitAndDuration`: RunTurn → `turnWait.Count>=1` + `turnDuration{ok}.Count>=1`.
   - `TestMetricsEventPublishErrorsOnDrop`: hubBufSize+1 条 Publish → 1 条 drop → `eventPublishErrors{session_event}>=1`.
 - 加 `newTestManagerWithMetrics` helper (带 metrics.Registry).
-- import 加 `github.com/imshuai/yaa/internal/metrics` (合并到已有 block).
+- import 加 `github.com/v2up-32mb/yaa/internal/metrics` (合并到已有 block).
 
 #### `docs/session/checklist.md` (改)
 - 行79 "指标全部使用 yaa_session_*" 勾选 → 58/58 ✅ 全闭合.
@@ -3789,3 +3789,18 @@ plugin 52/52, session 58/58, skill 24/24, storage 23/23, tool 45/45
   - `go build -o yaa.exe ./cmd/yaa`
   - `yaa.exe -config yaa.yaml`
   (同样不需要 mingw / TDM-GCC, 因为 modernc.org/sqlite 无 cgo 依赖).
+
+---
+
+## #73 — 公开仓库准备：模块路径 v2up-32mb/yaa + 本地静态 WebUI + 示例配置
+
+### 变更
+- 模块路径 `github.com/imshuai/yaa` → `github.com/v2up-32mb/yaa`（Makefile ldflags、plugin.proto go_package、全部 import 同步）
+- 用与仓库锁定一致的工具链重新生成 `pkg/pluginrpc/gen`：protoc 3.12.4 + protoc-gen-go v1.28.1 + protoc-gen-go-grpc v1.2.0，产物 diff 仅 go_package 描述符字节
+- WebUI 不再依赖 unpkg CDN：`internal/api/webui/vendor/` 内嵌 vue@3.4.38 + element-plus@2.8.4 本地产物，`/vendor/{name}` 白名单路由，离线/内网 Win7 可用
+- 新增 `yaa.example.yaml`（配置校验通过：`yaa config migrate -dry-run`），README「当前状态」同步为实现阶段现状
+
+### 验证
+- gofmt / go vet / go build ./... 全绿
+- CGO_ENABLED=0 GOOS=windows GOARCH=amd64 GOAMD64=v1 交叉编译通过
+- go test ./... 全绿

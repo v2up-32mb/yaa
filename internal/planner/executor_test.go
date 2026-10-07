@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/imshuai/yaa/internal/provider"
+	"github.com/v2up-32mb/yaa/internal/provider"
 )
 
 // linearPlan 用 3 个 LLM step 构造顺序 plan: c 依赖 b 依赖 a.

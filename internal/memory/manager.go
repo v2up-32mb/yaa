@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/imshuai/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/config"
 )
 
 // EventName 8 个 canonical event name（observability.md §2）。Memory 不直接发布；

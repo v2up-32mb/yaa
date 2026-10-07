@@ -8,13 +8,13 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/imshuai/yaa/internal/config"
-	ctxwindow "github.com/imshuai/yaa/internal/context"
-	mm "github.com/imshuai/yaa/internal/memory"
-	"github.com/imshuai/yaa/internal/provider"
-	"github.com/imshuai/yaa/internal/session"
-	"github.com/imshuai/yaa/internal/skill"
-	"github.com/imshuai/yaa/internal/tool"
+	"github.com/v2up-32mb/yaa/internal/config"
+	ctxwindow "github.com/v2up-32mb/yaa/internal/context"
+	mm "github.com/v2up-32mb/yaa/internal/memory"
+	"github.com/v2up-32mb/yaa/internal/provider"
+	"github.com/v2up-32mb/yaa/internal/session"
+	"github.com/v2up-32mb/yaa/internal/skill"
+	"github.com/v2up-32mb/yaa/internal/tool"
 )
 
 // HandleTurn 提交 user 消息并执行完整 Agent turn（含 Tool loop，docs/agent.md §4）。

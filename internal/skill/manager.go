@@ -10,9 +10,9 @@ import (
 
 	"golang.org/x/exp/slog"
 
-	"github.com/imshuai/yaa/internal/config"
-	"github.com/imshuai/yaa/internal/metrics"
-	"github.com/imshuai/yaa/internal/tool"
+	"github.com/v2up-32mb/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/metrics"
+	"github.com/v2up-32mb/yaa/internal/tool"
 )
 
 // Load 在启动期一次性加载并校验全部 Skill 与 Agent binding。
@@ -35,7 +35,7 @@ func Load(
 // Registry 同时被 LoadWith 用于构造 load 指标并赋给 *Manager.metrics (供 ResolveForAgent 复用).
 type LoadHooks struct {
 	Registry *metrics.Registry // nil → metric nop
-	Logger   *slog.Logger       // nil → log nop (默认未注入不落日志)
+	Logger   *slog.Logger      // nil → log nop (默认未注入不落日志)
 }
 
 // LoadWith 与 Load 等价, 额外接收 LoadHooks 在构造期埋点 (docs/skill/observability.md).
@@ -168,8 +168,8 @@ func LoadWith(
 		entries:   entries,
 		byAgent:   byAgent,
 		skillsDir: dir,
-		metrics: sm,
-		logger:  hooks.Logger,
+		metrics:   sm,
+		logger:    hooks.Logger,
 	}
 	return mgr, nil
 }

@@ -6,21 +6,21 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/imshuai/yaa/internal/metrics"
+	"github.com/v2up-32mb/yaa/internal/metrics"
 )
 
 // sessionMetrics 持有 10 个 session 指标. nil 字段时对应接入点 nop (docs/session/observability.md §2).
 type sessionMetrics struct {
-	current             *metrics.Gauge     // yaa_session_current{state}
-	operations          *metrics.Counter   // yaa_session_operations_total{operation,result}
-	messages            *metrics.Counter   // yaa_session_messages_total{role}
-	messageBytes        *metrics.Histogram // yaa_session_message_bytes{role}
-	turnWait            *metrics.Histogram // yaa_session_turn_wait_seconds
-	turnDuration        *metrics.Histogram // yaa_session_turn_duration_seconds{result}
-	persistenceErrors   *metrics.Counter   // yaa_session_persistence_errors_total{operation}
-	restore             *metrics.Counter   // yaa_session_restore_total{result}
-	cleanupTransitions  *metrics.Counter   // yaa_session_cleanup_transitions_total{to,reason}
-	eventPublishErrors  *metrics.Counter   // yaa_session_event_publish_errors_total{event}
+	current            *metrics.Gauge     // yaa_session_current{state}
+	operations         *metrics.Counter   // yaa_session_operations_total{operation,result}
+	messages           *metrics.Counter   // yaa_session_messages_total{role}
+	messageBytes       *metrics.Histogram // yaa_session_message_bytes{role}
+	turnWait           *metrics.Histogram // yaa_session_turn_wait_seconds
+	turnDuration       *metrics.Histogram // yaa_session_turn_duration_seconds{result}
+	persistenceErrors  *metrics.Counter   // yaa_session_persistence_errors_total{operation}
+	restore            *metrics.Counter   // yaa_session_restore_total{result}
+	cleanupTransitions *metrics.Counter   // yaa_session_cleanup_transitions_total{to,reason}
+	eventPublishErrors *metrics.Counter   // yaa_session_event_publish_errors_total{event}
 }
 
 // newSessionMetrics 按 Registry 构造 10 个指标并 MustRegister; r == nil 返回全字段 nil 的 nop 容器.

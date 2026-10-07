@@ -63,10 +63,10 @@ type sseSession struct {
 // kind=heartbeat -> ": ping\n\n"
 // kind=close -> 关 GET 流
 type sseEvent struct {
-	kind   string // event | heartbeat | close
-	event  string
-	id     int64
-	data   []byte
+	kind  string // event | heartbeat | close
+	event string
+	id    int64
+	data  []byte
 }
 
 // NewSSEServer 构造未启动的 SSEServer (docs §4 NewSSEServer 签名).
@@ -256,7 +256,9 @@ func (s *SSEServer) handleEndpointGet(ctx context.Context, handler ServerHandler
 // 成功: handler 返 (resp, nil), 推 frame 到 session.out (GET 流消费), POST 返 202 空 body.
 // handler 返 (nil, nil) notification: POST 返 202 空 body, 不推 frame.
 // handler 返 (resp, err) hard fail: 通过同 session GET 流推 resp frame (handler 已 inject error),
-//   POST 仍返 202 (docs §3.2 SSE POST 不返同步响应; 失败语义由 SSE frame 携带).
+//
+//	POST 仍返 202 (docs §3.2 SSE POST 不返同步响应; 失败语义由 SSE frame 携带).
+//
 // POST 解析失败 (JSON 非 JSON/缺 session_id): 同步 400 + JSON-RPC error body (-32700 / -32600).
 func (s *SSEServer) handleMessagesPost(ctx context.Context, handler ServerHandler, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -391,9 +393,9 @@ func writeJSONRPCErrorHTTP(w http.ResponseWriter, status int, id json.RawMessage
 		Message string `json:"message"`
 	}
 	type wireResp struct {
-		JSONRPC string         `json:"jsonrpc"`
+		JSONRPC string          `json:"jsonrpc"`
 		ID      json.RawMessage `json:"id,omitempty"`
-		Error   rpcErr         `json:"error"`
+		Error   rpcErr          `json:"error"`
 	}
 	resp := wireResp{JSONRPC: "2.0", Error: rpcErr{Code: code, Message: message}}
 	if len(id) > 0 {

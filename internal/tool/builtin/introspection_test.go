@@ -8,14 +8,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/imshuai/yaa/internal/agent"
-	"github.com/imshuai/yaa/internal/config"
-	ctxwindow "github.com/imshuai/yaa/internal/context"
-	"github.com/imshuai/yaa/internal/provider"
-	"github.com/imshuai/yaa/internal/session"
-	"github.com/imshuai/yaa/internal/skill"
-	"github.com/imshuai/yaa/internal/storage"
-	"github.com/imshuai/yaa/internal/tool"
+	"github.com/v2up-32mb/yaa/internal/agent"
+	"github.com/v2up-32mb/yaa/internal/config"
+	ctxwindow "github.com/v2up-32mb/yaa/internal/context"
+	"github.com/v2up-32mb/yaa/internal/provider"
+	"github.com/v2up-32mb/yaa/internal/session"
+	"github.com/v2up-32mb/yaa/internal/skill"
+	"github.com/v2up-32mb/yaa/internal/storage"
+	"github.com/v2up-32mb/yaa/internal/tool"
 )
 
 // introspectionEnv 为 introspection Tool 测试构造一套完整轻量 Manager 集合.
@@ -56,7 +56,7 @@ func newIntrospectionEnv(t *testing.T) *introspectionEnv {
 	t.Cleanup(func() { _ = sm.Shutdown(context.Background()) })
 
 	cfg := &config.Config{Providers: []config.ProviderConfig{provCfg},
-		Agents: []config.AgentConfig{{ID: "a1", Name: "A1", Provider: "p1", Model: "test-model", MaxTokens: 1000}},
+		Agents:  []config.AgentConfig{{ID: "a1", Name: "A1", Provider: "p1", Model: "test-model", MaxTokens: 1000}},
 		Context: config.ContextConfig{MaxTokens: 0, ReservedTokens: 1500, Strategy: "truncate"},
 		Session: sessCfg,
 		Tools:   config.ToolsConfig{DefaultTimeout: 30_000_000_000, MaxTimeout: 60_000_000_000, MaxConcurrent: 2},
@@ -459,13 +459,27 @@ func TestNilManagersDontPanic(t *testing.T) {
 		name string
 		exec func() (any, error)
 	}{
-		{"agent_list", func() (any, error) { return NewAgentListTool(nil).Execute(context.Background(), tool.ExecutionScope{}, nil) }},
-		{"agent_inspect", func() (any, error) { return NewAgentInspectTool(nil, nil, nil).Execute(context.Background(), tool.ExecutionScope{}, nil) }},
-		{"session_list", func() (any, error) { return NewSessionListTool(nil).Execute(context.Background(), tool.ExecutionScope{}, nil) }},
-		{"session_inspect", func() (any, error) { return NewSessionInspectTool(nil).Execute(context.Background(), tool.ExecutionScope{}, map[string]any{"session_id": "x"}) }},
-		{"tool_list", func() (any, error) { return NewToolListTool(nil).Execute(context.Background(), tool.ExecutionScope{}, nil) }},
-		{"skill_list", func() (any, error) { return NewSkillListTool(nil).Execute(context.Background(), tool.ExecutionScope{}, nil) }},
-		{"provider_list", func() (any, error) { return NewProviderListTool(nil).Execute(context.Background(), tool.ExecutionScope{}, nil) }},
+		{"agent_list", func() (any, error) {
+			return NewAgentListTool(nil).Execute(context.Background(), tool.ExecutionScope{}, nil)
+		}},
+		{"agent_inspect", func() (any, error) {
+			return NewAgentInspectTool(nil, nil, nil).Execute(context.Background(), tool.ExecutionScope{}, nil)
+		}},
+		{"session_list", func() (any, error) {
+			return NewSessionListTool(nil).Execute(context.Background(), tool.ExecutionScope{}, nil)
+		}},
+		{"session_inspect", func() (any, error) {
+			return NewSessionInspectTool(nil).Execute(context.Background(), tool.ExecutionScope{}, map[string]any{"session_id": "x"})
+		}},
+		{"tool_list", func() (any, error) {
+			return NewToolListTool(nil).Execute(context.Background(), tool.ExecutionScope{}, nil)
+		}},
+		{"skill_list", func() (any, error) {
+			return NewSkillListTool(nil).Execute(context.Background(), tool.ExecutionScope{}, nil)
+		}},
+		{"provider_list", func() (any, error) {
+			return NewProviderListTool(nil).Execute(context.Background(), tool.ExecutionScope{}, nil)
+		}},
 	}
 	for _, c := range tt {
 		r, err := c.exec()
@@ -488,11 +502,11 @@ func TestRegisterIntrospection(t *testing.T) {
 	}
 	tm, _ := tool.NewManager(tool.Dependencies{Config: cfg, Providers: e.providers})
 	if err := RegisterIntrospection(tm, IntrospectionDeps{
-		Agents:    e.agents,
-		Sessions:  e.sessions,
-		Tools:     e.tools,
-		Skills:    e.skills,
-		Providers: e.providers,
+		Agents:            e.agents,
+		Sessions:          e.sessions,
+		Tools:             e.tools,
+		Skills:            e.skills,
+		Providers:         e.providers,
 		RuntimeStatusFunc: func() (int64, bool) { return 1, true },
 	}); err != nil {
 		t.Fatalf("RegisterIntrospection: %v", err)

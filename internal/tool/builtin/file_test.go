@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/imshuai/yaa/internal/config"
-	"github.com/imshuai/yaa/internal/tool"
+	"github.com/v2up-32mb/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/tool"
 )
 
 func tmpDir(t *testing.T) string {
@@ -200,11 +200,11 @@ func TestFileListRecursive(t *testing.T) {
 	}
 	// 期望: b.txt + sub/ (dir) + sub/c.txt + sub/deep/ (dir) + sub/deep/d.txt
 	want := map[string]bool{
-		"b.txt":          true,
+		"b.txt":                            true,
 		"sub" + string(filepath.Separator): true,
-		filepath.Join("sub", "c.txt"):       true,
+		filepath.Join("sub", "c.txt"):      true,
 		filepath.Join("sub", "deep") + string(filepath.Separator): true,
-		filepath.Join("sub", "deep", "d.txt"): true,
+		filepath.Join("sub", "deep", "d.txt"):                     true,
 	}
 	if len(got) != len(want) {
 		t.Fatalf("got=%v want %d items", got, len(want))

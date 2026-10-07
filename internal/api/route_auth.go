@@ -7,7 +7,7 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"github.com/imshuai/yaa/internal/auth"
+	"github.com/v2up-32mb/yaa/internal/auth"
 )
 
 // Transport 表示路由通信类型（docs/auth/integration.md §2）。

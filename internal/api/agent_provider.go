@@ -3,7 +3,7 @@ package api
 import (
 	"context"
 
-	"github.com/imshuai/yaa/internal/agent"
+	"github.com/v2up-32mb/yaa/internal/agent"
 )
 
 // AgentProvider 由 Agent Manager 实现，注入到 API Server。

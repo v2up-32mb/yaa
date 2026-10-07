@@ -8,7 +8,7 @@ import (
 
 	"golang.org/x/exp/slog"
 
-	"github.com/imshuai/yaa/internal/metrics"
+	"github.com/v2up-32mb/yaa/internal/metrics"
 )
 
 // skillMetrics 持有 5 个 skill 指标. nil 字段时对应接入点 nop (docs/skill/observability.md §2).

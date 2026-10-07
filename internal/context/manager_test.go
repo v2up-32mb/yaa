@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/imshuai/yaa/internal/config"
-	"github.com/imshuai/yaa/internal/metrics"
-	"github.com/imshuai/yaa/internal/provider"
+	"github.com/v2up-32mb/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/metrics"
+	"github.com/v2up-32mb/yaa/internal/provider"
 )
 
 // fakeProvider 用字节数估算 tokens。
@@ -331,10 +331,10 @@ type summarizingProvider struct {
 	chatErr     error
 }
 
-func (s *summarizingProvider) ID() string         { return "summarizing" }
-func (s *summarizingProvider) Type() string       { return "summarizing" }
+func (s *summarizingProvider) ID() string                   { return "summarizing" }
+func (s *summarizingProvider) Type() string                 { return "summarizing" }
 func (s *summarizingProvider) Models() []provider.ModelInfo { return []provider.ModelInfo{s.model} }
-func (s *summarizingProvider) Close() error       { return nil }
+func (s *summarizingProvider) Close() error                 { return nil }
 
 func (s *summarizingProvider) Chat(ctx context.Context, req *provider.ChatRequest) (*provider.ChatResponse, error) {
 	s.chatCalled = true
@@ -521,19 +521,21 @@ func TestBuildMetricsEmitted(t *testing.T) {
 	_ = out
 }
 
-
-
 // estimateFailingProvider 的 EstimateInputTokens 永远返回 error.
 type estimateFailingProvider struct {
 	model provider.ModelInfo
 }
 
-func (p *estimateFailingProvider) ID() string   { return "fail-provider" }
-func (p *estimateFailingProvider) Type() string { return "fail" }
+func (p *estimateFailingProvider) ID() string                   { return "fail-provider" }
+func (p *estimateFailingProvider) Type() string                 { return "fail" }
 func (p *estimateFailingProvider) Models() []provider.ModelInfo { return []provider.ModelInfo{p.model} }
-func (p *estimateFailingProvider) Close() error { return nil }
-func (p *estimateFailingProvider) Chat(context.Context, *provider.ChatRequest) (*provider.ChatResponse, error) { return nil, nil }
-func (p *estimateFailingProvider) StreamChat(context.Context, *provider.ChatRequest) (<-chan provider.ChatChunk, error) { return nil, nil }
+func (p *estimateFailingProvider) Close() error                 { return nil }
+func (p *estimateFailingProvider) Chat(context.Context, *provider.ChatRequest) (*provider.ChatResponse, error) {
+	return nil, nil
+}
+func (p *estimateFailingProvider) StreamChat(context.Context, *provider.ChatRequest) (<-chan provider.ChatChunk, error) {
+	return nil, nil
+}
 func (p *estimateFailingProvider) EstimateInputTokens(ctx context.Context, req *provider.ChatRequest) (int, error) {
 	return 0, errors.New("token provider down")
 }
@@ -711,7 +713,7 @@ func TestBuildUsesReloadedConfigSnapshot(t *testing.T) {
 	outBefore, err := m.Build(ctx, BuildInput{
 		Provider: fp, Model: fp.model,
 		Request: provider.ChatRequest{Model: "test-model", MaxTokens: &maxTokens, Messages: msgs},
-		Config: cfgBefore,
+		Config:  cfgBefore,
 	})
 	if err != nil {
 		t.Fatalf("build before: %v", err)
@@ -726,7 +728,7 @@ func TestBuildUsesReloadedConfigSnapshot(t *testing.T) {
 	outAfter, err := m.Build(ctx, BuildInput{
 		Provider: fp, Model: fp.model,
 		Request: provider.ChatRequest{Model: "test-model", MaxTokens: &maxTokens, Messages: msgs},
-		Config: cfgAfter,
+		Config:  cfgAfter,
 	})
 	if err != nil {
 		t.Fatalf("build after: %v", err)
@@ -774,7 +776,7 @@ runtime:
 	outBefore, err := m.Build(context.Background(), BuildInput{
 		Provider: fp, Model: fp.model,
 		Request: provider.ChatRequest{Model: "test-model", MaxTokens: &maxTokens, Messages: msgs},
-		Config: rm.Current().Context,
+		Config:  rm.Current().Context,
 	})
 	if err != nil {
 		t.Fatalf("build before: %v", err)
@@ -807,7 +809,7 @@ context:
 	outAfter, err := m.Build(context.Background(), BuildInput{
 		Provider: fp, Model: fp.model,
 		Request: provider.ChatRequest{Model: "test-model", MaxTokens: &maxTokens, Messages: msgs},
-		Config: rm.Current().Context,
+		Config:  rm.Current().Context,
 	})
 	if err != nil {
 		t.Fatalf("build after: %v", err)

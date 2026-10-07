@@ -6,7 +6,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/imshuai/yaa/internal/skill"
+	"github.com/v2up-32mb/yaa/internal/skill"
 )
 
 // skillSummaryDTO 是 GET /api/v1/skills 列表 item（docs/remote-api/skill.md）。

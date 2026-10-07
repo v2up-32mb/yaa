@@ -178,9 +178,9 @@ func TestStartDialFailsTerminatesProcess(t *testing.T) {
 type handshakeMockRPC struct {
 	handshakeResp HandshakeResponse
 	handshakeErr  error
-	initErr      error
-	readyResp    ReadyResponse
-	readyErr     error
+	initErr       error
+	readyResp     ReadyResponse
+	readyErr      error
 }
 
 func (m *handshakeMockRPC) Handshake(ctx context.Context, pv, id string) (HandshakeResponse, error) {
@@ -193,7 +193,7 @@ func (m *handshakeMockRPC) Ready(ctx context.Context) (ReadyResponse, error) {
 func (m *handshakeMockRPC) Health(ctx context.Context) (HealthResponse, error) {
 	return HealthResponse{Level: "healthy"}, nil
 }
-func (m *handshakeMockRPC) Stop(ctx context.Context) error                { return nil }
+func (m *handshakeMockRPC) Stop(ctx context.Context) error { return nil }
 func (m *handshakeMockRPC) InvokeTool(ctx context.Context, req ToolRequest) (ToolResponse, error) {
 	return ToolResponse{}, nil
 }

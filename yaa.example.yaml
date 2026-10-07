@@ -1,0 +1,175 @@
+# =============================================================================
+# Yaa! Runtime 配置示例（Windows 7 SP1 x64 部署参考）
+# -----------------------------------------------------------------------------
+# 用法：
+#   yaa.exe -config yaa.example.yaml
+#   （不传 -config 时按优先级探测：./yaa.yaml > ~/.yaa/yaa.yaml ...）
+#
+# 这是一份「最小可行 + 常用项」示例。完整默认值可运行：
+#   yaa config defaults   # 导出全部内置默认配置
+#   yaa config migrate    # 升级旧版本配置文件
+#
+# 字段若省略则使用内置默认值；显式配置会覆盖默认值。
+# =============================================================================
+
+config_version: "1.0"
+
+# ---- Runtime 服务 ------------------------------------------------
+runtime:
+  storage:
+    type: sqlite            # modernc.org/sqlite 纯 Go 实现，无需 CGO / DLL
+    path: ./data/yaa.db     # Win7 上相对 yaa.exe 所在目录
+  api:
+    http:
+      addr: 127.0.0.1:8080  # 默认只监听本机；局域网客户端请改 0.0.0.0:8080
+      read_timeout: 30s
+      write_timeout: 30s
+    ws:
+      enabled: true         # WebSocket 传输（WebUI / 客户端）
+    sse:
+      enabled: true         # SSE 传输
+  auth:
+    enabled: true           # 强烈建议开启；token 由 static 段配置
+    token_type: static
+    tokens:
+      - id: win7-client
+        token: "change-me-random-token"
+        roles: [admin]
+    # JWT 客户端（后续客户端需要签发自己的 token）
+    jwt:
+      secret: "change-me-jwt-secret"
+
+# ---- LLM Provider（AI 网关 / 上游模型入口）------------------------
+# provider.type 支持：openai（含 Azure/DeepSeek/Qwen 等 openai 兼容网关）、
+# claude、gemini、ollama。AI 网关只需一个 openai 类型 + base_url 指向网关。
+providers:
+  - id: my-gateway
+    type: openai
+    base_url: "http://127.0.0.1:9000/v1"   # 本地 AI 网关地址
+    api_key: "sk-local-gateway"            # 网关的 API key
+    timeout: 60s
+    max_retries: 2
+    retry_interval: 2s
+    models:
+      - id: gpt-4o-mini
+        name: "GPT-4o mini"
+        context_window: 128000
+        max_output: 16384
+        supports_tools: true
+        supports_streaming: true
+      - id: deepseek-chat
+        name: "DeepSeek Chat"
+        context_window: 64000
+        max_output: 8192
+        supports_tools: true
+        supports_streaming: true
+
+# 本地 Ollama（可选，完全离线时使用）
+  # - id: local-ollama
+  #   type: ollama
+  #   base_url: "http://127.0.0.1:11434"
+  #   models:
+  #     - id: qwen2.5:7b
+  #       name: "Qwen 2.5 7B"
+  #       context_window: 32768
+  #       max_output: 8192
+  #       supports_tools: true
+  #       supports_streaming: true
+
+# ---- Agent -------------------------------------------------------
+agents:
+  - id: default
+    name: "默认助手"
+    provider: my-gateway         # 引用上面 providers 的 id
+    model: gpt-4o-mini
+    system_prompt: "你是一个运行在 Windows 7 上的本地 AI 助手，使用中文回答。"
+    tools: [shell, file_read, file_write, file_list, http, config_query, runtime_status, tool_list, skill_list, provider_list, session_list]
+    skills: []
+    temperature: 0.3
+    planner:
+      max_steps: 16
+      timeout: 30s
+
+# ---- 内置工具集 ---------------------------------------------------
+tools:
+  enabled: true
+  shell:
+    enabled: true
+    timeout: 30s
+    options:
+      working_dir: .           # 默认工作目录（相对 yaa.exe）
+      max_output_bytes: 65536
+      # allowed_commands: [dir, type, tasklist]  # 留空 = 不限制（与 blocked_commands 并用）
+      # blocked_commands: [format, del /q]
+  http:
+    enabled: true
+    timeout: 30s
+    options:
+      max_redirects: 5
+      max_response_bytes: 1048576
+      # allowed_hosts: [127.0.0.1, api.local]     # 留空 = 不限制
+  file:
+    enabled: true
+    timeout: 30s
+    options: {}
+  config_query:
+    enabled: true
+  config_reload:
+    enabled: true
+
+# ---- Skills（技能目录）--------------------------------------------
+skills:
+  dir: ./skills
+
+# ---- Memory（跨会话记忆，向量检索默认关闭，纯 SQLite 关键词即可 Win7 离线跑）----
+memory:
+  enabled: true
+  max_items: 10000
+  storage:
+    type: sqlite
+    path: ./data/yaa-memory.db
+  vector:
+    enabled: false            # 向量检索默认关闭；开启需要 embedding provider
+    fallback_to_keyword: true
+
+# ---- Session / Context / Planner ----------------------------------
+session:
+  cleanup_interval: 1m0s
+
+context:
+  strategy: hybrid
+  max_tokens: 0               # 0 = 由模型 context_window 自动推导
+  reserved_tokens: 4096
+
+planner:
+  type: llm
+  max_steps: 16
+  max_concurrent: 4
+  max_tokens: 2048
+  temperature: 0.2
+  timeout: 30s
+
+# ---- MCP -----------------------------------------------------------
+# yaa 原生 MCP 客户端/服务器。
+mcp:
+  servers: []                 # 远程/本地 MCP server 列表（如接入 mcp-tools）
+  #   - id: mcp-tools
+  #     transport: sse        # 或 streamable-http / stdio
+  #     url: "http://127.0.0.1:8081/sse"
+  #     headers:
+  #       Authorization: "Bearer change-me"
+  server:
+    enabled: false            # 把 yaa 自己的工具暴露成 MCP server 时打开
+    transport: stdio          # stdio | sse | streamable-http
+    addr: 127.0.0.1:9090
+
+# ---- Plugins -------------------------------------------------------
+plugins:
+  paths: [./plugins]
+  auto_start: true
+
+# ---- 日志 ----------------------------------------------------------
+log:
+  level: info                 # debug | info | warn | error
+  format: text
+  output: stderr

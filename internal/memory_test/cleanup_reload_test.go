@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	mm "github.com/imshuai/yaa/internal/memory"
-	"github.com/imshuai/yaa/internal/memory/memstore"
+	mm "github.com/v2up-32mb/yaa/internal/memory"
+	"github.com/v2up-32mb/yaa/internal/memory/memstore"
 )
 
 // deleteExpiredCountingMemstore 嵌入 memstore.Store: 自动获得所有 ContentStore 方法, 仅覆盖 DeleteExpired 计数.

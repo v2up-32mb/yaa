@@ -11,7 +11,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"github.com/imshuai/yaa/internal/session"
+	"github.com/v2up-32mb/yaa/internal/session"
 )
 
 // dialWS 在测试中等同 client dial：Authorization Header + 指定 path。

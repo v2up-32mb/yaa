@@ -25,7 +25,7 @@ func validInput(maxSteps int) PlanningInput {
 func validPlan() Plan {
 	return Plan{
 		ID:   "turn-1:plan",
-		Task:  "do thing",
+		Task: "do thing",
 		Steps: []Step{
 			{ID: "fetch", Action: ActionTool, Target: "http", Input: map[string]any{"url": "https://example.invalid/data"}},
 			{ID: "summary", Action: ActionLLM, Input: map[string]any{"instruction": "summarize", "source": map[string]any{"$step": "fetch", "key": "content"}}, Depends: []string{"fetch"}},
@@ -45,7 +45,7 @@ func TestValidatePlanAcceptsValidBaseline(t *testing.T) {
 // TestValidatePlanRejectsRule1InputEmpty 反向: 缺 TurnID / AgentID / Task / Model / MaxSteps<=0 / Capability 重复或空名.
 func TestValidatePlanRejectsRule1InputEmpty(t *testing.T) {
 	cases := []struct {
-		name  string
+		name   string
 		mutate func(*PlanningInput)
 	}{
 		{"empty turn_id", func(i *PlanningInput) { i.TurnID = "" }},
@@ -84,7 +84,7 @@ func TestValidatePlanRejectsRule1InputEmpty(t *testing.T) {
 // TestValidatePlanRejectsRule2PlanIDAndTaskAndStepCount 反向 Plan.ID / Task / steps 长度.
 func TestValidatePlanRejectsRule2PlanIDAndTaskAndStepCount(t *testing.T) {
 	cases := []struct {
-		name  string
+		name   string
 		mutate func(*Plan, *PlanningInput)
 	}{
 		{"plan id mismatch", func(p *Plan, i *PlanningInput) { p.ID = "wrong" }},

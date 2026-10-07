@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/imshuai/yaa/internal/config"
-	"github.com/imshuai/yaa/internal/tool"
+	"github.com/v2up-32mb/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/tool"
 	"golang.org/x/exp/slog"
 )
 
@@ -31,6 +31,7 @@ const (
 //   - 失败后按 mcp.reconnect 指数退避重连: 退化退避 (initial * 2^(attempt-1) cap max); catalog 三元严格比对一致
 //     才原子替换 handle + 递增 generation; 比对失败保持 Error 等待 Runtime 重启 (不可自愈).
 //   - Stop 全 goroutine 同步退出 (upstreamWG.Wait) + close done.
+//
 // lifecycle: Prepare 同步启动 stdio auto_start Client (connect → init → discover → register),
 // 成功后启动 runUpstream goroutine; 失败仅标记 server 的 LastError + Status=Error, 不阻断其他 server.
 // SSE / Streamable HTTP transport、heartbeat 失败后的指数退避重连、catalog reconciliation、
@@ -74,7 +75,6 @@ type Manager struct {
 	mu sync.RWMutex
 }
 
-
 // serverEntry 是 Manager 内部持有的配置 server 投影源 + 运行时状态。
 // name/transport 是配置投影；handle/client/status/tools 是运行时状态；
 // cfg 缓存 stdio auto_start 启动所需字段（command/args/env/timeout）。
@@ -82,9 +82,9 @@ type serverEntry struct {
 	name      string
 	transport string
 	cfg       config.MCPServerConfig
-	handle    *ProxyHandle     // 同一 server 的所有 Proxy 共享
-	client    *Client          // 当前代连接；断线置 nil
-	status    ServerStatus     // 含 ToolCount/ProtocolVersion/ConnectedAt/LastError
+	handle    *ProxyHandle    // 同一 server 的所有 Proxy 共享
+	client    *Client         // 当前代连接；断线置 nil
+	status    ServerStatus    // 含 ToolCount/ProtocolVersion/ConnectedAt/LastError
 	tools     []tool.ToolInfo // 已发现的 Tool 快照深拷贝
 	// generation 是 runUpstream 用于 compare-and-clear 的代际计数; 每代 Client 一个 generation,
 	// 新代替换旧代时递增 (docs/mcp/config-ref.md §7.2). 首代 = 0; 每次 attemptReconnect 成功递增.
@@ -342,7 +342,7 @@ func (m *Manager) publishGeneration(e *serverEntry, handle *ProxyHandle, client 
 		e.tools = append(e.tools, tool.ToolInfo{
 			Name:        mt.Name, // 已 canonical mcp.<server>.<remote>
 			Description: mt.Description,
-			Parameters: append(json.RawMessage(nil), mt.InputSchema...),
+			Parameters:  append(json.RawMessage(nil), mt.InputSchema...),
 			Enabled:     true,
 			Source:      "mcp",
 		})
@@ -603,9 +603,11 @@ func (m *Manager) markGenerationFailed(e *serverEntry, handle *ProxyHandle, clie
 // attemptReconnect 失败后按 mcp.reconnect 指数退避构新 Client 并原子替换 entry.
 // 入参 oldGen 是失败代的 generation (用于 entry 锁下递增).
 // 返回: newClient / newGen / keepGoing.
-//   keepGoing=true 表示重连成功：entry 已切换到新通代 client, 调用方继续 ticker.
-//   keepGoing=false 表示重连不再继续: mcp.reconnect.enabled=false / runtime 已停止 / max_attempts 耗尽;
-//        entry 维持 Error/unavailable, 调用方应退出 goroutine.
+//
+//	keepGoing=true 表示重连成功：entry 已切换到新通代 client, 调用方继续 ticker.
+//	keepGoing=false 表示重连不再继续: mcp.reconnect.enabled=false / runtime 已停止 / max_attempts 耗尽;
+//	     entry 维持 Error/unavailable, 调用方应退出 goroutine.
+//
 // 退避: backoff = initial_delay * 2^(attempt-1) cap max_delay; 期间可被 m.runCtx 中断 (runtime Stop).
 // 比对失败 (catalog 差异) 立即保持 Error 不再退避 (协议错要求 Runtime 重启, 见 docs §7.2 末段).
 func (m *Manager) attemptReconnect(e *serverEntry, handle *ProxyHandle, oldGen uint64) (*Client, uint64, chan struct{}, bool) {
@@ -752,7 +754,7 @@ func (m *Manager) catalogMatches(e *serverEntry, discovered []catalogItem) bool 
 // catalogItem 是 attemptReconnect 与 catalogMatches 之间共享的比对快照 (已在 NewMCPToolProxy 注册前规范化).
 type catalogItem struct {
 	canonicalName string
-	description  string
+	description   string
 	inputSchema   json.RawMessage
 }
 
@@ -924,6 +926,7 @@ func cloneServerStatus(s ServerStatus) ServerStatus {
 	}
 	return out
 }
+
 // safeEndpoint 按 docs/mcp/observability.md §1 末段脱敏 URL: 移除 userinfo、query、fragment,
 // 只保留 scheme://host/path. 空字符串、非绝对 URL 原样返回 (调用方负责保证 sse/streamable_http URL 合法).
 // ponytail: stdlib url.Parse 即可, 不引入新依赖.
@@ -943,8 +946,10 @@ func safeEndpoint(rawURL string) string {
 }
 
 // endpointFor 返回某 serverEntry 适合日志的 endpoint 字符串 (docs §1):
-//   stdio -> command (无敏感字段, args 不入);
-//   sse/streamable_http -> safeEndpoint(cfg.URL);
+//
+//	stdio -> command (无敏感字段, args 不入);
+//	sse/streamable_http -> safeEndpoint(cfg.URL);
+//
 // ponytail: 单一 helper 让 6 个事件日志点不复写脱敏逻辑.
 func endpointFor(e *serverEntry) string {
 	if e == nil {

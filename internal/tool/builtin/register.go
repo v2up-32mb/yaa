@@ -6,9 +6,9 @@ package builtin
 import (
 	"fmt"
 
-	"github.com/imshuai/yaa/internal/config"
-	"github.com/imshuai/yaa/internal/mcp"
-	"github.com/imshuai/yaa/internal/tool"
+	"github.com/v2up-32mb/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/mcp"
+	"github.com/v2up-32mb/yaa/internal/tool"
 )
 
 // RegisterBuiltin 把 shell/http/file_read/file_write/file_list/file_delete 等内置 Tool

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/imshuai/yaa/internal/tool"
+	"github.com/v2up-32mb/yaa/internal/tool"
 )
 
 // toolInfoDTO 映射 tool.ToolInfo（docs/remote-api/tool.md）：

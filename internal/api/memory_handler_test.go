@@ -2,18 +2,18 @@ package api
 
 import (
 	"bytes"
-	"io"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
-	"github.com/imshuai/yaa/internal/config"
-	"github.com/imshuai/yaa/internal/memory"
-	"github.com/imshuai/yaa/internal/session"
-	"github.com/imshuai/yaa/internal/storage"
+	"github.com/v2up-32mb/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/memory"
+	"github.com/v2up-32mb/yaa/internal/session"
+	"github.com/v2up-32mb/yaa/internal/storage"
 )
 
 // fakeMemoryProvider 实现 MemoryProvider，所有 method 可以预置回执。
@@ -33,16 +33,16 @@ type fakeMemoryProvider struct {
 	reindexErr    error
 	indexStatus   memory.IndexStatus
 
-	lastSearchReq memory.SearchRequest
-	lastGetScope  memory.Scope
-	lastGetKey    string
-	lastPutItem   memory.MemoryItem
+	lastSearchReq   memory.SearchRequest
+	lastGetScope    memory.Scope
+	lastGetKey      string
+	lastPutItem     memory.MemoryItem
 	lastDeleteScope memory.Scope
-	lastDeleteKey  string
+	lastDeleteKey   string
 	lastClearScope  memory.Scope
-	lastPromoteSrc memory.Scope
-	lastPromoteKey string
-	lastReindexAgt string
+	lastPromoteSrc  memory.Scope
+	lastPromoteKey  string
+	lastReindexAgt  string
 }
 
 func (f *fakeMemoryProvider) Search(_ context.Context, _ config.MemoryPolicy, req memory.SearchRequest) ([]memory.SearchResult, error) {
@@ -129,7 +129,6 @@ func doMem(t *testing.T, s *Server, method, path string, body any) (*httptest.Re
 }
 
 // ---- helpers ----
-
 
 func TestMemorySearchSuccess(t *testing.T) {
 	mp := &fakeMemoryProvider{indexStatus: memory.IndexReady}

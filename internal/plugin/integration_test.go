@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/imshuai/yaa/internal/config"
-	"github.com/imshuai/yaa/internal/metrics"
+	"github.com/v2up-32mb/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/metrics"
 )
 
 var enabledTrue = true
@@ -183,8 +183,8 @@ func TestStopTimeoutContinuesTeardown(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := config.PluginsConfig{
-		AutoStart:     false,
-		StopTimeout:   100 * time.Millisecond, // 极短
+		AutoStart:   false,
+		StopTimeout: 100 * time.Millisecond, // 极短
 	}
 	m, err := NewManager(context.Background(), cfg, l, nil, testLogger())
 	if err != nil {

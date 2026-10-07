@@ -11,7 +11,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/imshuai/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/config"
 )
 
 // geminiProvider 适配 Google Generative AI REST API。

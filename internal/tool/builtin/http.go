@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/imshuai/yaa/internal/config"
-	"github.com/imshuai/yaa/internal/tool"
+	"github.com/v2up-32mb/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/tool"
 )
 
 // HTTPTool 发送 HTTP 请求；重定向逐跳 hostname 校验；响应体超 max_response_bytes 截断。
@@ -30,8 +30,8 @@ type EffectiveHTTPOptions struct {
 
 // HTTPTool 重定向校验失败 sentinel (docs §6.2 "达到或目标不允许时停止").
 var (
-	errMaxRedirects      = fmt.Errorf("too many redirects")
-	errRedirectBlocked   = fmt.Errorf("redirect to blocked host")
+	errMaxRedirects       = fmt.Errorf("too many redirects")
+	errRedirectBlocked    = fmt.Errorf("redirect to blocked host")
 	errRedirectNotAllowed = fmt.Errorf("redirect to host not in allowlist")
 )
 

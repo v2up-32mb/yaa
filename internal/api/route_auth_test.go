@@ -11,8 +11,8 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/mux"
 
-	"github.com/imshuai/yaa/internal/auth"
-	"github.com/imshuai/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/auth"
+	"github.com/v2up-32mb/yaa/internal/config"
 )
 
 // fakeHealthProvider 是 route_auth 测试用的最小 HealthProvider，固定 Ready=true。

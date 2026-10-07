@@ -9,21 +9,21 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/imshuai/yaa/internal/config"
-	ctxwindow "github.com/imshuai/yaa/internal/context"
-	mm "github.com/imshuai/yaa/internal/memory"
-	"github.com/imshuai/yaa/internal/planner"
-	"github.com/imshuai/yaa/internal/provider"
-	"github.com/imshuai/yaa/internal/session"
-	"github.com/imshuai/yaa/internal/skill"
-	"github.com/imshuai/yaa/internal/tool"
+	"github.com/v2up-32mb/yaa/internal/config"
+	ctxwindow "github.com/v2up-32mb/yaa/internal/context"
+	mm "github.com/v2up-32mb/yaa/internal/memory"
+	"github.com/v2up-32mb/yaa/internal/planner"
+	"github.com/v2up-32mb/yaa/internal/provider"
+	"github.com/v2up-32mb/yaa/internal/session"
+	"github.com/v2up-32mb/yaa/internal/skill"
+	"github.com/v2up-32mb/yaa/internal/tool"
 	"golang.org/x/exp/slog"
 )
 
 // Dependencies 是 Runtime 持有并借给 Agent Manager 的对象。
 // Memory 为 nil 表示该 Agent 未启用 Memory（runDirectTurn 跳过检索注入）。
 type Dependencies struct {
-	Config    *config.Config
+	Config *config.Config
 	// Reloader 可选: 非 nil 时 op 通过 currentCfg() 取 Current() snapshot 而非旧 deps.Config 指针
 	// (docs/config hot-reload.md "组件每次 op 开始时从 Current() 复制 hot-reload 字段").
 	Reloader  *config.ReloadManager
@@ -47,9 +47,9 @@ type agentBinding struct {
 	status    Status
 	// Planner v1 接入 (docs/planner/integration.md §1).
 	// plannerType=disabled 时 planner / runner 都为 nil, HandleTurn 走 runDirectTurn.
-	planner     *planner.LLMPlanner
-	runner      *planner.AggregateStepRunner // 在 SetTools 完成后 lazy 构造, 供 runPlannedTurn 组装 Executor
-	plannerCfg  config.PlannerConfig           // resolved effective 配置, 用于 max_steps/max_concurrent/timeout
+	planner    *planner.LLMPlanner
+	runner     *planner.AggregateStepRunner // 在 SetTools 完成后 lazy 构造, 供 runPlannedTurn 组装 Executor
+	plannerCfg config.PlannerConfig         // resolved effective 配置, 用于 max_steps/max_concurrent/timeout
 }
 
 // Manager 是 Agent Manager。

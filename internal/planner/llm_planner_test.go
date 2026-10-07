@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/imshuai/yaa/internal/config"
-	"github.com/imshuai/yaa/internal/provider"
+	"github.com/v2up-32mb/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/provider"
 )
 
 // fakeProvider 是 LLMPlanner 单测的最小 provider.Provider 实现: 只记录最后一次 ChatRequest,
@@ -24,8 +24,8 @@ type fakeProvider struct {
 	chatHook func(ctx context.Context, req *provider.ChatRequest)
 }
 
-func (f *fakeProvider) ID() string             { return "fake" }
-func (f *fakeProvider) Type() string           { return "fake" }
+func (f *fakeProvider) ID() string   { return "fake" }
+func (f *fakeProvider) Type() string { return "fake" }
 func (f *fakeProvider) Models() []provider.ModelInfo {
 	return []provider.ModelInfo{{ID: "m"}}
 }
@@ -84,13 +84,13 @@ func sampleInput() PlanningInput {
 func standardCfg() config.PlannerConfig {
 	t := 0.2
 	return config.PlannerConfig{
-		Type:        "llm",
-		Model:       "",
-		Temperature: &t,
-		MaxTokens:    1024,
-		MaxSteps:     4,
+		Type:          "llm",
+		Model:         "",
+		Temperature:   &t,
+		MaxTokens:     1024,
+		MaxSteps:      4,
 		MaxConcurrent: 4,
-		Timeout:      5 * time.Second,
+		Timeout:       5 * time.Second,
 	}
 }
 
@@ -235,7 +235,7 @@ func TestPlanContextCancelParent(t *testing.T) {
 // 不调 Provider.Chat.
 func TestPlanRejectsMissingInput(t *testing.T) {
 	cases := []struct {
-		name  string
+		name   string
 		mutate func(in *PlanningInput)
 	}{
 		{"turn_id", func(in *PlanningInput) { in.TurnID = "" }},

@@ -8,12 +8,12 @@ import (
 	"fmt"
 	"net"
 	"strings"
-	
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	"github.com/imshuai/yaa/pkg/pluginrpc/gen"
+	"github.com/v2up-32mb/yaa/pkg/pluginrpc/gen"
 )
 
 // Client 是 Plugin gRPC client 的封装, 提供 Handshake/Init/Ready/Health/Stop/InvokeTool 生命周期方法.

@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/imshuai/yaa/internal/config"
-	"github.com/imshuai/yaa/internal/tool"
+	"github.com/v2up-32mb/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/tool"
 )
 
 // ConfigReloadTool 是 config_reload Tool: 调用 ReloadManager.Reload() 触发热更新,
@@ -51,8 +51,8 @@ func (t *ConfigReloadTool) Execute(ctx context.Context, scope tool.ExecutionScop
 		// 失败: 仍把 ReloadResult 清零字段 + error 一起返IsError=true (调用方可看到 err 内容文本)
 		// ponytail: err 不渗透为硬错, 让 ToolManager 返回 IsError 文本给调用方/LLM
 		out, _ := json.Marshal(struct {
-			Applied   bool   `json:"applied"`
-			Error     string `json:"error"`
+			Applied    bool   `json:"applied"`
+			Error      string `json:"error"`
 			ErrorClass string `json:"error_class,omitempty"`
 		}{false, err.Error(), errorClass(err)})
 		return tool.ToolResult{Content: string(out), IsError: true}, nil

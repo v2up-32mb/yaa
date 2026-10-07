@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/imshuai/yaa/internal/provider"
+	"github.com/v2up-32mb/yaa/internal/provider"
 
 	"golang.org/x/exp/slog"
 )
@@ -108,13 +108,14 @@ func (e *Executor) SetObs(logger *slog.Logger, turnID string) {
 }
 
 // Execute 调度执行 plan (docs §4):
-// 1. 建 planCtx + cancel (turn ctx 派生; 失败即停 / 取消时调 cancel 不启动新节点).
-// 2. 入度 == 0 的节点按 Steps 数组顺序放入 ready slice.
-// 3. running < maxConcurrent 时启动 ready 节点; worker 绑定 input + 调 StepRunner + 单次写 result channel.
-// 4. 调度 goroutine 收到每个 worker 结果: 累计 Usage/ToolCallCount 先; 判断 error/status.
-//    成功: 保存 Output + 各 dependent 入度 -- + 入度 0 进 ready. 失败: 记录 + cancel () + 不启动新节点.
-// 5. 等 worker 全部退出; 未启动 → skipped; 取消运行节点 → canceled.
-// 6. 全成功 → completed/err=nil; caller cancel → canceled/ctx.Cause; Step hard fail → failed/*ExecutionError.
+//  1. 建 planCtx + cancel (turn ctx 派生; 失败即停 / 取消时调 cancel 不启动新节点).
+//  2. 入度 == 0 的节点按 Steps 数组顺序放入 ready slice.
+//  3. running < maxConcurrent 时启动 ready 节点; worker 绑定 input + 调 StepRunner + 单次写 result channel.
+//  4. 调度 goroutine 收到每个 worker 结果: 累计 Usage/ToolCallCount 先; 判断 error/status.
+//     成功: 保存 Output + 各 dependent 入度 -- + 入度 0 进 ready. 失败: 记录 + cancel () + 不启动新节点.
+//  5. 等 worker 全部退出; 未启动 → skipped; 取消运行节点 → canceled.
+//  6. 全成功 → completed/err=nil; caller cancel → canceled/ctx.Cause; Step hard fail → failed/*ExecutionError.
+//
 // 结果 channel 容量 ≥ len(plan.Steps), 确保取消后 worker 不会因无人接收泄漏.
 func (e *Executor) Execute(ctx context.Context, agentID, sessionID string, plan Plan) (PlanResult, error) {
 	logger := e.logger

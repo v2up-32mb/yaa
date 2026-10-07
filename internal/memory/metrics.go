@@ -6,19 +6,19 @@ import (
 	"errors"
 	"time"
 
-	"github.com/imshuai/yaa/internal/metrics"
+	"github.com/v2up-32mb/yaa/internal/metrics"
 )
 
 // memoryMetrics 持有 8 个 memory 指标. nil 字段时对应接入点 nop.
 type memoryMetrics struct {
-	operations       *metrics.Counter   // yaa_memory_operations_total{operation,result}
+	operations        *metrics.Counter   // yaa_memory_operations_total{operation,result}
 	operationDuration *metrics.Histogram // yaa_memory_operation_duration_seconds{operation}
-	items            *metrics.Gauge      // yaa_memory_items{agent_bucket}
-	errors           *metrics.Counter    // yaa_memory_errors_total{operation,error_class}
-	degraded         *metrics.Gauge      // yaa_memory_degraded{component}
-	expired          *metrics.Counter    // yaa_memory_expired_total{reason}
-	evicted          *metrics.Counter    // yaa_memory_evicted_total{policy}
-	reindex          *metrics.Counter    // yaa_memory_reindex_total{result}
+	items             *metrics.Gauge     // yaa_memory_items{agent_bucket}
+	errors            *metrics.Counter   // yaa_memory_errors_total{operation,error_class}
+	degraded          *metrics.Gauge     // yaa_memory_degraded{component}
+	expired           *metrics.Counter   // yaa_memory_expired_total{reason}
+	evicted           *metrics.Counter   // yaa_memory_evicted_total{policy}
+	reindex           *metrics.Counter   // yaa_memory_reindex_total{result}
 }
 
 // newMemoryMetrics 按 Registry 构造 8 个指标并 MustRegister; r == nil 返回全字段 nil nop 容器.

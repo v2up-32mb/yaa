@@ -12,8 +12,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/imshuai/yaa/internal/config"
-	"github.com/imshuai/yaa/internal/tool"
+	"github.com/v2up-32mb/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/tool"
 )
 
 // FileTool 实现 4 个文件操作的合并 Tool：file_read / file_write / file_list / file_delete。
@@ -290,4 +290,3 @@ func validatePath(path string, allowed, blocked []string) (string, error) {
 	}
 	return "", fmt.Errorf("path is not in allowed paths")
 }
-

@@ -12,12 +12,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/imshuai/yaa/internal/agent"
-	"github.com/imshuai/yaa/internal/config"
-	ctxwindow "github.com/imshuai/yaa/internal/context"
-	"github.com/imshuai/yaa/internal/provider"
-	"github.com/imshuai/yaa/internal/session"
-	"github.com/imshuai/yaa/internal/storage"
+	"github.com/v2up-32mb/yaa/internal/agent"
+	"github.com/v2up-32mb/yaa/internal/config"
+	ctxwindow "github.com/v2up-32mb/yaa/internal/context"
+	"github.com/v2up-32mb/yaa/internal/provider"
+	"github.com/v2up-32mb/yaa/internal/session"
+	"github.com/v2up-32mb/yaa/internal/storage"
 )
 
 // conversationTestEnv 构造完整环境的 API Server + Agent Manager + Session Manager + Provider。

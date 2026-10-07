@@ -14,6 +14,7 @@ import (
 //   - SemVer range 校验
 //   - 循环依赖检测
 //   - 稳定拓扑排序 (依赖在依赖项之前)
+//
 // 返回 order 是依赖在前, 被依赖在后的排列.
 func (m *Manager) resolveDependencies() (order []string, errs []error) {
 	// 构建邻接表: plugin -> 它依赖的 plugin IDs (只含已 installed 的)

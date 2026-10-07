@@ -165,17 +165,17 @@ var _ io.Reader = (*strings.Reader)(nil)
 // sensitiveKeyBlocklist 是 docs/skill/config.md §3 明确的凭据 key 黑名单。
 // 校验前对 key 做 Unicode case-fold + "-"->"_" 规范化, 再 exact match。
 var sensitiveKeyBlocklist = map[string]struct{}{
-	"api_key":        {},
-	"password":       {},
-	"secret":         {},
-	"token":          {},
-	"access_token":   {},
-	"refresh_token":  {},
-	"authorization":  {},
-	"cookie":         {},
-	"set_cookie":     {},
-	"private_key":    {},
-	"client_secret":  {},
+	"api_key":       {},
+	"password":      {},
+	"secret":        {},
+	"token":         {},
+	"access_token":  {},
+	"refresh_token": {},
+	"authorization": {},
+	"cookie":        {},
+	"set_cookie":    {},
+	"private_key":   {},
+	"client_secret": {},
 }
 
 // normalizeSensitiveKey 把 option key 规范化为黑名单匹配形式: Unicode case-fold + "-"->"_".

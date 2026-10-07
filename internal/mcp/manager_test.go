@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/imshuai/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/config"
 )
 
 // 空 MCPConfig 所有 server 应状态 disconnected；List 长度=0。
@@ -275,6 +275,7 @@ func TestManagerActivateRejectsEnabledServerConfig(t *testing.T) {
 		t.Errorf("Activate: got %v, want nil", err)
 	}
 }
+
 // Activate 配置未启用本地 Server 应返 nil（v1 接受 disabled 路径）。
 func TestManagerActivateNilWhenDisabled(t *testing.T) {
 	m, _ := NewManager(&config.MCPConfig{}, nil, nil)

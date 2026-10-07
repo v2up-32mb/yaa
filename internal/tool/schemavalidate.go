@@ -14,14 +14,14 @@ import (
 
 // schemaNode 是 Parameters JSON 解码后的最小可用视图. uint -> bool 必须 json.Number 避免 float range noise.
 type schemaNode struct {
-	Type                 string                 `json:"type"`
-	Properties           map[string]schemaNode  `json:"properties"`
-	Required             []string               `json:"required"`
-	Enum                 []any                  `json:"enum"`
-	AdditionalProperties *bool                  `json:"additionalProperties"`
-	MinLength            int                    `json:"minLength"`
-	Minimum              *float64               `json:"minimum"`
-	Maximum              *float64               `json:"maximum"`
+	Type                 string                `json:"type"`
+	Properties           map[string]schemaNode `json:"properties"`
+	Required             []string              `json:"required"`
+	Enum                 []any                 `json:"enum"`
+	AdditionalProperties *bool                 `json:"additionalProperties"`
+	MinLength            int                   `json:"minLength"`
+	Minimum              *float64              `json:"minimum"`
+	Maximum              *float64              `json:"maximum"`
 }
 
 // validateJSONSchema 校验 params 是否符合 schema. schema 为空/未含 "type" 时跳过 (向后兼容 builtin).
@@ -173,4 +173,3 @@ func enumContains(enum []any, v any) bool {
 	}
 	return false
 }
-

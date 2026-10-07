@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/imshuai/yaa/internal/session"
+	"github.com/v2up-32mb/yaa/internal/session"
 )
 
 // handleSSEEvents 实现 GET /api/v1/sessions/:id/events（SSE 订阅）。

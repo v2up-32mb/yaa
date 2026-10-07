@@ -14,13 +14,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/imshuai/yaa/internal/config"
-	ctxwindow "github.com/imshuai/yaa/internal/context"
-	"github.com/imshuai/yaa/internal/provider"
-	"github.com/imshuai/yaa/internal/session"
-	"github.com/imshuai/yaa/internal/skill"
-	"github.com/imshuai/yaa/internal/storage"
-	"github.com/imshuai/yaa/internal/tool"
+	"github.com/v2up-32mb/yaa/internal/config"
+	ctxwindow "github.com/v2up-32mb/yaa/internal/context"
+	"github.com/v2up-32mb/yaa/internal/provider"
+	"github.com/v2up-32mb/yaa/internal/session"
+	"github.com/v2up-32mb/yaa/internal/skill"
+	"github.com/v2up-32mb/yaa/internal/storage"
+	"github.com/v2up-32mb/yaa/internal/tool"
 )
 
 // localEchoTool 是 agent 包内的 Tool stub，与 tool 包 echoTool 行为类似：回 params["msg"]。

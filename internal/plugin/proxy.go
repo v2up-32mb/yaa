@@ -7,16 +7,16 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/imshuai/yaa/internal/tool"
+	"github.com/v2up-32mb/yaa/internal/tool"
 )
 
 // PluginToolProxy 是 Plugin 提供的 Tool capability 在 Runtime 侧的代理.
 // 实现 tool.Tool interface, Execute 转发到 Plugin 的 InvokeTool RPC.
 type PluginToolProxy struct {
-	pluginID    string
-	capability  CapabilityDescriptor
-	handle      *ProxyHandle
-	params      json.RawMessage // 缓存的 schema bytes
+	pluginID   string
+	capability CapabilityDescriptor
+	handle     *ProxyHandle
+	params     json.RawMessage // 缓存的 schema bytes
 }
 
 // NewPluginToolProxy 构造 Tool proxy, 校验 capability.Type == "tool".
@@ -33,10 +33,10 @@ func NewPluginToolProxy(pluginID string, cap CapabilityDescriptor, handle *Proxy
 		return nil, fmt.Errorf("%w: marshal schema: %v", ErrPluginCapabilityConflict, err)
 	}
 	return &PluginToolProxy{
-		pluginID:    pluginID,
-		capability:  cap,
-		handle:      handle,
-		params:      schemaJSON,
+		pluginID:   pluginID,
+		capability: cap,
+		handle:     handle,
+		params:     schemaJSON,
 	}, nil
 }
 

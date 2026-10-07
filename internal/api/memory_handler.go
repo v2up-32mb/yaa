@@ -9,24 +9,24 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/imshuai/yaa/internal/config"
-	"github.com/imshuai/yaa/internal/memory"
+	"github.com/v2up-32mb/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/memory"
 )
 
 // memoryDTO 是 Memory Item 的 REST 响应外形（docs/remote-api/memory.md §DTO）。
 // index_status 由 handler 调 IndexStatus 得到；不进 MemoryItem 字段。
 type memoryDTO struct {
-	AgentID      string         `json:"agent_id"`
-	SessionID    string         `json:"session_id"`
-	Layer        memory.Layer   `json:"layer"`
-	Key          string         `json:"key"`
-	Content      string         `json:"content"`
-	Metadata     map[string]any `json:"metadata"`
-	CreatedAt    string         `json:"created_at"`
-	UpdatedAt    string         `json:"updated_at"`
-	ExpiresAt    *string         `json:"expires_at"`
-	Version      uint64         `json:"version"`
-	IndexStatus  memory.IndexStatus `json:"index_status"`
+	AgentID     string             `json:"agent_id"`
+	SessionID   string             `json:"session_id"`
+	Layer       memory.Layer       `json:"layer"`
+	Key         string             `json:"key"`
+	Content     string             `json:"content"`
+	Metadata    map[string]any     `json:"metadata"`
+	CreatedAt   string             `json:"created_at"`
+	UpdatedAt   string             `json:"updated_at"`
+	ExpiresAt   *string            `json:"expires_at"`
+	Version     uint64             `json:"version"`
+	IndexStatus memory.IndexStatus `json:"index_status"`
 }
 
 // memorySearchItemDTO 与单条 Search hit 对应，多 score 字段。
@@ -39,15 +39,15 @@ type memorySearchItemDTO struct {
 	Metadata  map[string]any `json:"metadata"`
 	CreatedAt string         `json:"created_at"`
 	UpdatedAt string         `json:"updated_at"`
-	ExpiresAt *string         `json:"expires_at"`
+	ExpiresAt *string        `json:"expires_at"`
 	Version   uint64         `json:"version"`
 	Score     float64        `json:"score"`
 }
 
 type memorySearchData struct {
 	Items       []memorySearchItemDTO `json:"items"`
-	Limit       int                    `json:"limit"`
-	IndexStatus memory.IndexStatus     `json:"index_status"`
+	Limit       int                   `json:"limit"`
+	IndexStatus memory.IndexStatus    `json:"index_status"`
 }
 
 type memoryPostBody struct {
@@ -55,7 +55,7 @@ type memoryPostBody struct {
 	Key       string         `json:"key"`
 	Content   string         `json:"content"`
 	Metadata  map[string]any `json:"metadata"`
-	ExpiresAt *string         `json:"expires_at"` // RFC3339 文本 或 null
+	ExpiresAt *string        `json:"expires_at"` // RFC3339 文本 或 null
 }
 
 type memoryDeleteOneData struct {
@@ -79,10 +79,10 @@ type memoryPromoteBody struct {
 }
 
 type memoryReindexData struct {
-	AgentID  string           `json:"agent_id"`
-	Layer    memory.Layer     `json:"layer"`
-	Status   memory.IndexStatus `json:"status"`
-	Indexed  int              `json:"indexed"`
+	AgentID string             `json:"agent_id"`
+	Layer   memory.Layer       `json:"layer"`
+	Status  memory.IndexStatus `json:"status"`
+	Indexed int                `json:"indexed"`
 }
 
 // resolveMemoryProvider 从注入的 provider + resolver 解析 agent 的 effective policy。
@@ -225,11 +225,11 @@ func (s *Server) handleMemorySearch(w http.ResponseWriter, r *http.Request, mp M
 	}
 
 	results, err := mp.Search(r.Context(), policy, memory.SearchRequest{
-		Scope: memory.Scope{AgentID: agentID, SessionID: sessionID, Layer: memory.LayerLongTerm},
-		Query:           query,
-		Limit:           limit,
-		Metadata:        metadata,
-		IncludeGlobal:   includeGlobal,
+		Scope:         memory.Scope{AgentID: agentID, SessionID: sessionID, Layer: memory.LayerLongTerm},
+		Query:         query,
+		Limit:         limit,
+		Metadata:      metadata,
+		IncludeGlobal: includeGlobal,
 	})
 	if err != nil {
 		s.writeMemoryError(w, r, err)
@@ -475,13 +475,14 @@ func formatMemoryExpiresAt(exp *time.Time) *string {
 }
 
 // writeMemoryError 按 docs/memory/errors.md §7 把 Memory error 映射为 HTTP envelope。
-//   context.Canceled       → 不写响应（客户端已断开）
-//   DeadlineExceeded       → 504 / 50401
-//   ErrMemoryNotFound      → 404 / 40401
-//   ErrMemoryDisabled      → 409 / 40901
-//   ErrMemoryQuota         → 429 / 42901
-//   ErrMemoryInvalidScope/InvalidItem/ManagedField/UnsupportedLayer/ExpiredInput → 400 / 40001
-//   其他（含 closed/store unavailable/embedding/index/ReindexFailed）→ 503 / 50301
+//
+//	context.Canceled       → 不写响应（客户端已断开）
+//	DeadlineExceeded       → 504 / 50401
+//	ErrMemoryNotFound      → 404 / 40401
+//	ErrMemoryDisabled      → 409 / 40901
+//	ErrMemoryQuota         → 429 / 42901
+//	ErrMemoryInvalidScope/InvalidItem/ManagedField/UnsupportedLayer/ExpiredInput → 400 / 40001
+//	其他（含 closed/store unavailable/embedding/index/ReindexFailed）→ 503 / 50301
 func (s *Server) writeMemoryError(w http.ResponseWriter, r *http.Request, err error) {
 	if errors.Is(err, context.Canceled) || errors.Is(r.Context().Err(), context.Canceled) {
 		// 客户端已断开：不写响应。

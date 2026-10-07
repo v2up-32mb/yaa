@@ -377,11 +377,11 @@ providers:
 
 func TestNormalizeArrayIndexPath(t *testing.T) {
 	cases := map[string]string{
-		"agents[0].model":           "agents.model",
+		"agents[0].model":             "agents.model",
 		"agents[10].memory.max_items": "agents.memory.max_items",
-		"tools.builtin":              "tools.builtin",
-		"providers":                  "providers",
-		"agents[1].session.ttl":      "agents.session.ttl",
+		"tools.builtin":               "tools.builtin",
+		"providers":                   "providers",
+		"agents[1].session.ttl":       "agents.session.ttl",
 	}
 	for in, want := range cases {
 		if got := normalizeArrayIndexPath(in); got != want {

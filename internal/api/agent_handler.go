@@ -3,8 +3,8 @@ package api
 import (
 	"context"
 	"errors"
+	"github.com/v2up-32mb/yaa/internal/agent"
 	"net/http"
-	"github.com/imshuai/yaa/internal/agent"
 )
 
 // agentSummaryDTO 是 GET /api/v1/agents 列表 item（AgentSummaryView，docs/remote-api/agent.md）。

@@ -3,7 +3,7 @@ package session
 import (
 	"testing"
 
-	"github.com/imshuai/yaa/internal/provider"
+	"github.com/v2up-32mb/yaa/internal/provider"
 )
 
 func TestValidateMessageRole(t *testing.T) {

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/imshuai/yaa/internal/provider"
+	"github.com/v2up-32mb/yaa/internal/provider"
 )
 
 // mustProj 对 AgentID 构造投影，失败 t.Fatal。

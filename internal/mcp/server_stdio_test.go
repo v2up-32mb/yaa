@@ -8,16 +8,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/imshuai/yaa/internal/config"
-	"github.com/imshuai/yaa/internal/tool"
+	"github.com/v2up-32mb/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/tool"
 )
 
 // fakeEchoTool 是 stdio MCPServer 端到端测试用的最小 Tool.
 type fakeEchoTool struct{}
 
-func (fakeEchoTool) Name() string                 { return "echo" }
-func (fakeEchoTool) Description() string          { return "echo back input text" }
-func (fakeEchoTool) Parameters() json.RawMessage  { return json.RawMessage(`{"type":"object","properties":{"text":{"type":"string"}},"required":["text"]}`) }
+func (fakeEchoTool) Name() string        { return "echo" }
+func (fakeEchoTool) Description() string { return "echo back input text" }
+func (fakeEchoTool) Parameters() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{"text":{"type":"string"}},"required":["text"]}`)
+}
 func (fakeEchoTool) Execute(ctx context.Context, scope tool.ExecutionScope, params map[string]any) (tool.ToolResult, error) {
 	text, _ := params["text"].(string)
 	return tool.ToolResult{Content: "echo: " + text}, nil
@@ -282,4 +284,3 @@ func TestStdioMCPServerCtxCancelExit(t *testing.T) {
 	_ = stdinW.Close()
 	_ = stdoutR.Close()
 }
-

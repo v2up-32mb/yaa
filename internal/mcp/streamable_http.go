@@ -21,7 +21,7 @@ import (
 const (
 	streamableMessageMaxBytes  = 4 * 1024 * 1024 // 单条 JSON-RPC body 上限 (与 stdio/SSE 一致 docs §2)
 	streamableRespBodyCap      = 16 * 1024       // 错误 body 最多有界丢弃 16 KiB (docs §3.3)
-	streamableRecvChanCapacity = 256            // Post → Recv channel cap; 单次 POST 含 request 时响应立刻投递
+	streamableRecvChanCapacity = 256             // Post → Recv channel cap; 单次 POST 含 request 时响应立刻投递
 )
 
 // StreamableHTTPClient 是 MCP 2025-03-26 Streamable HTTP 传输实现 (docs/mcp/transport.md §3.3).
@@ -46,10 +46,10 @@ type StreamableHTTPClient struct {
 
 	// Server-to-Client SSE 流字段. 仅当 initialize 拿到 Mcp-Session-Id 后启动一次 GET 试探.
 	// 200 + text/event-stream → 启动 SSE recvLoop goroutine 投递 recvCh; 405/其他 → graceful 关掉, 不影响 POST 模式.
-	sseStarted   uint32         // atomic: 0 未尝试 GET, 1 已尝试 (不管成功与否)
-	sseCtx       context.Context // 由 openServerToClientStream 创建, 与 Start 同生命周期 (Close cancel)
-	sseCancel    context.CancelFunc
-	sseLoopDone  chan struct{} // SSE recvLoop 退出信号; nil 表示未启动
+	sseStarted  uint32          // atomic: 0 未尝试 GET, 1 已尝试 (不管成功与否)
+	sseCtx      context.Context // 由 openServerToClientStream 创建, 与 Start 同生命周期 (Close cancel)
+	sseCancel   context.CancelFunc
+	sseLoopDone chan struct{} // SSE recvLoop 退出信号; nil 表示未启动
 }
 
 // recvItem 是 Send 后投递到 recvCh 的中间结构.
@@ -107,6 +107,7 @@ func (c *StreamableHTTPClient) Start(startupCtx context.Context) error {
 //   - 含 request 的 POST 返回单个 JSON 响应或 text/event-stream; 通知 POST 成功返 202 空 body.
 //   - 收到 Mcp-Session-Id 后续 POST 必带.
 //   - 不自动重试 / 不重发已发的 tools/call.
+//
 // 注: 响应通过 recvCh 投递给 Recv (保持 Recv/Send 分离模型与 SSE/stdio 一致).
 func (c *StreamableHTTPClient) Send(ctx context.Context, msg *Message) error {
 	c.mu.Lock()
@@ -326,6 +327,7 @@ func (c *StreamableHTTPClient) Recv(ctx context.Context) (*Message, error) {
 //   - cancel SSE recvLoop + 等 sseLoopDone 退出;
 //   - 发一次 DELETE 终止 session (docs §3.3 DELETE 成功 200/204, 404/405 幂等忽略);
 //   - 失败或无 session (stateless mode) 不返错.
+//
 // DELETE 由独立的短超时 ctx 控制; 不阻塞 Close 主路径过久.
 func (c *StreamableHTTPClient) Close() error {
 	c.closeOnce.Do(func() {

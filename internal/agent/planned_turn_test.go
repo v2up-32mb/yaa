@@ -12,12 +12,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/imshuai/yaa/internal/config"
-	ctxwindow "github.com/imshuai/yaa/internal/context"
-	"github.com/imshuai/yaa/internal/provider"
-	"github.com/imshuai/yaa/internal/session"
-	"github.com/imshuai/yaa/internal/storage"
-	"github.com/imshuai/yaa/internal/tool"
+	"github.com/v2up-32mb/yaa/internal/config"
+	ctxwindow "github.com/v2up-32mb/yaa/internal/context"
+	"github.com/v2up-32mb/yaa/internal/provider"
+	"github.com/v2up-32mb/yaa/internal/session"
+	"github.com/v2up-32mb/yaa/internal/storage"
+	"github.com/v2up-32mb/yaa/internal/tool"
 	"strings"
 )
 
@@ -35,8 +35,8 @@ type scriptResp struct {
 	err     error
 }
 
-func (p *scriptProvider) ID() string           { return "fake" }
-func (p *scriptProvider) Type() string         { return "fake" }
+func (p *scriptProvider) ID() string   { return "fake" }
+func (p *scriptProvider) Type() string { return "fake" }
 func (p *scriptProvider) Models() []provider.ModelInfo {
 	return []provider.ModelInfo{{ID: "fake-model", ContextWindow: 4096, MaxOutput: 2048}}
 }

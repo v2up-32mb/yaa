@@ -13,11 +13,11 @@ import (
 	"runtime"
 	"sort"
 
-	"github.com/imshuai/yaa/internal/agent"
-	"github.com/imshuai/yaa/internal/provider"
-	"github.com/imshuai/yaa/internal/session"
-	"github.com/imshuai/yaa/internal/skill"
-	"github.com/imshuai/yaa/internal/tool"
+	"github.com/v2up-32mb/yaa/internal/agent"
+	"github.com/v2up-32mb/yaa/internal/provider"
+	"github.com/v2up-32mb/yaa/internal/session"
+	"github.com/v2up-32mb/yaa/internal/skill"
+	"github.com/v2up-32mb/yaa/internal/tool"
 )
 
 // introspectionVersion 与 mcp/client.go runtimeVersion 一致; v1 不从 build 注入 (Ponytail).
@@ -26,7 +26,7 @@ const introspectionVersion = "0.1.0"
 // IntrospectionDeps 是 RegisterIntrospection 需要的只读 Manager 集合.
 // runtime_status 需要 uptime/ready callback 而非 Runtime 指针, 保持 Tool 无根容器依赖.
 type IntrospectionDeps struct {
-	Agents    *agent.Manager     // agent_list / agent_inspect
+	Agents    *agent.Manager    // agent_list / agent_inspect
 	Sessions  *session.Manager  // session_list / session_inspect
 	Tools     *tool.Manager     // tool_list / agent_inspect 的 Tool 名
 	Skills    *skill.Manager    // skill_list / agent_inspect 的 Skill 名
@@ -67,8 +67,10 @@ type RuntimeStatusTool struct {
 func NewRuntimeStatusTool(fn func() (int64, bool)) *RuntimeStatusTool {
 	return &RuntimeStatusTool{status: fn}
 }
-func (t *RuntimeStatusTool) Name() string        { return "runtime_status" }
-func (t *RuntimeStatusTool) Description() string { return "Report runtime version, Go version, uptime (seconds), and ready status." }
+func (t *RuntimeStatusTool) Name() string { return "runtime_status" }
+func (t *RuntimeStatusTool) Description() string {
+	return "Report runtime version, Go version, uptime (seconds), and ready status."
+}
 func (t *RuntimeStatusTool) Parameters() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`)
 }
@@ -229,7 +231,7 @@ type SessionListTool struct {
 }
 
 func NewSessionListTool(m *session.Manager) *SessionListTool { return &SessionListTool{mgr: m} }
-func (t *SessionListTool) Name() string                     { return "session_list" }
+func (t *SessionListTool) Name() string                      { return "session_list" }
 func (t *SessionListTool) Description() string {
 	return "List sessions for the caller agent. Pass state to filter by created/active/paused/closed, limit to cap results (1-100, default 20)."
 }
@@ -301,8 +303,10 @@ type SessionInspectTool struct {
 	mgr *session.Manager
 }
 
-func NewSessionInspectTool(m *session.Manager) *SessionInspectTool { return &SessionInspectTool{mgr: m} }
-func (t *SessionInspectTool) Name() string                        { return "session_inspect" }
+func NewSessionInspectTool(m *session.Manager) *SessionInspectTool {
+	return &SessionInspectTool{mgr: m}
+}
+func (t *SessionInspectTool) Name() string { return "session_inspect" }
 func (t *SessionInspectTool) Description() string {
 	return "Show metadata for one session. The session must belong to the caller agent or it is treated as not found."
 }
@@ -469,7 +473,7 @@ type ProviderListTool struct {
 }
 
 func NewProviderListTool(m *provider.Manager) *ProviderListTool { return &ProviderListTool{mgr: m} }
-func (t *ProviderListTool) Name() string                       { return "provider_list" }
+func (t *ProviderListTool) Name() string                        { return "provider_list" }
 func (t *ProviderListTool) Description() string {
 	return "List configured providers with their canonical id, type, and known models. Does not make network requests."
 }

@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/url"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
-	"github.com/imshuai/yaa/internal/config"
-	"github.com/imshuai/yaa/internal/tool"
+	"github.com/v2up-32mb/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/tool"
 )
 
 func TestHTTPExecuteBasic(t *testing.T) {
@@ -118,7 +118,7 @@ func TestHTTPRedirectFollowedWhenAllowed(t *testing.T) {
 	parsed, _ := url.Parse(srv.URL)
 	host := parsed.Hostname()
 	h, _ := NewHTTP(config.ToolConfig{Enabled: true, Options: map[string]any{
-		"allowed_hosts":  []any{host},
+		"allowed_hosts": []any{host},
 		"max_redirects": 5,
 	}})
 	r, err := h.Execute(context.Background(), tool.ExecutionScope{AgentID: "a"}, map[string]any{
@@ -130,7 +130,9 @@ func TestHTTPRedirectFollowedWhenAllowed(t *testing.T) {
 	if r.IsError {
 		t.Fatalf("unexpected IsError: %s", r.Content)
 	}
-	var out struct{ Body string `json:"body"` }
+	var out struct {
+		Body string `json:"body"`
+	}
 	_ = json.Unmarshal([]byte(r.Content), &out)
 	if out.Body != "final-body" {
 		t.Errorf("body=%q want final-body", out.Body)

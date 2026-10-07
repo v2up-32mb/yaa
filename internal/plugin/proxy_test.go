@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/imshuai/yaa/internal/tool"
+	"github.com/v2up-32mb/yaa/internal/tool"
 )
 
 // pluginToolProxyTest mocks the underlying RPCClient.InvokeTool to return an injected response.
@@ -23,7 +23,7 @@ func (m *invokeMockClient) Ready(ctx context.Context) (ReadyResponse, error) {
 func (m *invokeMockClient) Health(ctx context.Context) (HealthResponse, error) {
 	return HealthResponse{}, nil
 }
-func (m *invokeMockClient) Stop(ctx context.Context) error                { return nil }
+func (m *invokeMockClient) Stop(ctx context.Context) error { return nil }
 func (m *invokeMockClient) InvokeTool(ctx context.Context, req ToolRequest) (ToolResponse, error) {
 	return m.invokeResp, m.invokeErr
 }

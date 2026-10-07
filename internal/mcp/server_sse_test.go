@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/imshuai/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/config"
 )
 
 // newSSETestServer 构造一个跑 SSEServer 的 server 实例 + 返回 base URL 用于测试.
@@ -43,7 +43,7 @@ type sseTestClient struct {
 	endpoint string // 解析后的 absolute POST url (含 session_id query)
 	sid      string // session_id (来自 endpoint data query)
 	body     io.ReadCloser
-	lines    *bufio.Reader // 跨读 SSE 复用; 与 readSSEFrame 一致
+	lines    *bufio.Reader       // 跨读 SSE 复用; 与 readSSEFrame 一致
 	outChan  chan map[string]any // 把 GET 流读到的 message 帧 data 投递到本 channel
 	doneCh   chan struct{}
 }
@@ -365,9 +365,11 @@ func TestSSEServerContextCancelExit(t *testing.T) {
 	sse := NewSSEServer(ln, "/mcp", "/message")
 	serveCtx, cancel := context.WithCancel(context.Background())
 	serveDone := make(chan error, 1)
-	go func() { serveDone <- sse.Serve(serveCtx, func(ctx context.Context, session *ServerSession, msg *Message) (*Message, error) {
-		return nil, nil
-	}) }()
+	go func() {
+		serveDone <- sse.Serve(serveCtx, func(ctx context.Context, session *ServerSession, msg *Message) (*Message, error) {
+			return nil, nil
+		})
+	}()
 	time.Sleep(50 * time.Millisecond)
 	cancel()
 	select {
@@ -380,9 +382,6 @@ func TestSSEServerContextCancelExit(t *testing.T) {
 		t.Fatal("Serve did not return within 2s after ctx cancel")
 	}
 }
-
-
-
 
 // TestSSEServerPOSTUnknownSession404 测 POST 带 session_id 不存在 → 404 + JSON-RPC -32001 错.
 func TestSSEServerPOSTUnknownSession404(t *testing.T) {

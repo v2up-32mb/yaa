@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/imshuai/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/config"
 )
 
 // ollamaProvider 适配 Ollama REST /api/chat。

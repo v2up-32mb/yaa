@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/imshuai/yaa/internal/config"
-	"github.com/imshuai/yaa/internal/memory"
+	"github.com/v2up-32mb/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/memory"
 )
 
 // HTTPEmbedder 是 OpenAI-compatible HTTP Embedder（v1 唯一实现）。

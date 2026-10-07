@@ -44,7 +44,7 @@ func buildFullConfig() *Config {
 			"weather": SkillItemConfig{Enabled: true, Options: map[string]any{"api_key": "skill-key"}},
 		}},
 		Memory: MemoryConfig{
-			Enabled: true,
+			Enabled:   true,
 			Embedding: MemoryEmbeddingConfig{Provider: "openai-compatible", APIKey: "real-embed-key", BaseURL: "http://emb"},
 		},
 		MCP: MCPConfig{

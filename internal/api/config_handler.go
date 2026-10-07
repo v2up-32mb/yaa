@@ -3,7 +3,7 @@ package api
 import (
 	"net/http"
 
-	"github.com/imshuai/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/config"
 )
 
 // handleGetConfig — GET /api/v1/config（read:config）

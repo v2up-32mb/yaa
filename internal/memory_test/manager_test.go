@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/imshuai/yaa/internal/config"
-	mm "github.com/imshuai/yaa/internal/memory"
-	"github.com/imshuai/yaa/internal/memory/memstore"
+	"github.com/v2up-32mb/yaa/internal/config"
+	mm "github.com/v2up-32mb/yaa/internal/memory"
+	"github.com/v2up-32mb/yaa/internal/memory/memstore"
 )
 
 // captureEvents 实现简单的 EventEmitter，所有事件按顺序记录。
@@ -57,10 +57,10 @@ func clkOf(m *mm.Manager) *time.Time {
 func defaultPolicy() config.MemoryPolicy {
 	return config.MemoryPolicy{
 		Enabled:        true,
-		MaxItems:        3,
-		DefaultTTL:      0,
-		EvictionPolicy:  "fifo",
-		Vector:          config.MemoryVectorConfig{Enabled: false, TopK: 10, SimilarityThreshold: 0.7, FallbackToKeyword: true},
+		MaxItems:       3,
+		DefaultTTL:     0,
+		EvictionPolicy: "fifo",
+		Vector:         config.MemoryVectorConfig{Enabled: false, TopK: 10, SimilarityThreshold: 0.7, FallbackToKeyword: true},
 	}
 }
 
@@ -146,7 +146,9 @@ func TestManagerPutRejectsManagedField(t *testing.T) {
 func TestManagerPutTTLThreeStates(t *testing.T) {
 	m := newTestManager(t)
 	clockNow := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
-	if pc := clkOf(m); pc != nil { *pc = clockNow }
+	if pc := clkOf(m); pc != nil {
+		*pc = clockNow
+	}
 
 	// nil + default_ttl>0 → now+default_ttl
 	policy := defaultPolicy()
@@ -200,13 +202,17 @@ func TestManagerGetNotFound(t *testing.T) {
 
 func TestManagerGetExpiredReturnsNotFound(t *testing.T) {
 	m := newTestManager(t)
-	if pc := clkOf(m); pc != nil { *pc = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) }
+	if pc := clkOf(m); pc != nil {
+		*pc = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	}
 	policy := defaultPolicy()
 	policy.DefaultTTL = 1 * time.Hour
 	if _, err := m.Put(context.Background(), policy, mm.MemoryItem{AgentID: "a", Layer: mm.LayerLongTerm, Key: "k", Content: "x"}); err != nil {
 		t.Fatalf("put: %v", err)
 	}
-	if pc:=clkOf(m); pc!=nil { *pc = pc.Add(2 * time.Hour) }
+	if pc := clkOf(m); pc != nil {
+		*pc = pc.Add(2 * time.Hour)
+	}
 	_, err := m.Get(context.Background(), policy, mm.Scope{AgentID: "a", Layer: mm.LayerLongTerm}, "k")
 	if !errors.Is(err, mm.ErrMemoryNotFound) {
 		t.Fatalf("expired item should return mm.ErrMemoryNotFound, got %v", err)
@@ -279,7 +285,9 @@ func TestManagerDisabledPolicy(t *testing.T) {
 
 func TestManagerQuotaFifoEvict(t *testing.T) {
 	m := newTestManager(t)
-	if pc := clkOf(m); pc != nil { *pc = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) }
+	if pc := clkOf(m); pc != nil {
+		*pc = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	}
 	policy := defaultPolicy()
 	policy.MaxItems = 2
 	policy.EvictionPolicy = "fifo"
@@ -287,7 +295,9 @@ func TestManagerQuotaFifoEvict(t *testing.T) {
 	// put 2 unaffected
 	put := func(key string, i int) {
 		pc := clkOf(m)
-		if pc != nil { *pc = pc.Add(time.Duration(i) * time.Minute) }
+		if pc != nil {
+			*pc = pc.Add(time.Duration(i) * time.Minute)
+		}
 		if _, err := m.Put(ctx, policy, mm.MemoryItem{AgentID: "a", Layer: mm.LayerLongTerm, Key: key, Content: "x"}); err != nil {
 			t.Fatalf("put %s: %v", key, err)
 		}
@@ -313,7 +323,9 @@ func TestManagerQuotaFifoEvict(t *testing.T) {
 
 func TestManagerQuotaExceedsCapacity(t *testing.T) {
 	m := newTestManager(t)
-	if pc := clkOf(m); pc != nil { *pc = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) }
+	if pc := clkOf(m); pc != nil {
+		*pc = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	}
 	policy := defaultPolicy()
 	policy.MaxItems = 2
 	policy.EvictionPolicy = "fifo"
@@ -382,13 +394,18 @@ func TestManagerDeleteClear(t *testing.T) {
 
 func TestManagerDeleteExpired(t *testing.T) {
 	m := newTestManager(t)
-	if pc := clkOf(m); pc != nil { *pc = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) }
+	if pc := clkOf(m); pc != nil {
+		*pc = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	}
 	policy := defaultPolicy()
 	policy.DefaultTTL = 1 * time.Hour
 	ctx := context.Background()
 
 	put := func(key string, i int) {
-		pc := clkOf(m); if pc != nil { *pc = pc.Add(time.Duration(i) * time.Minute) }
+		pc := clkOf(m)
+		if pc != nil {
+			*pc = pc.Add(time.Duration(i) * time.Minute)
+		}
 		if _, err := m.Put(ctx, policy, mm.MemoryItem{AgentID: "a", Layer: mm.LayerLongTerm, Key: key, Content: "x"}); err != nil {
 			t.Fatalf("put: %v", err)
 		}
@@ -397,7 +414,9 @@ func TestManagerDeleteExpired(t *testing.T) {
 	put("k2", 30) // 0:30 + TTL 1h -> 1:30
 	// clock 当前 0:30（最后 put("k2",30) 推进过 30min）；
 	// 再推进 45min 到 1:15：只 k1 (1:00) 已过期，k2 (1:30) 仍有效。
-	if pc := clkOf(m); pc != nil { *pc = pc.Add(45 * time.Minute) }
+	if pc := clkOf(m); pc != nil {
+		*pc = pc.Add(45 * time.Minute)
+	}
 	clkNow := m.ClockForTest().Now()
 	n, err := m.DeleteExpired(ctx, clkNow, mm.MaxDeleteExpiredLimit)
 	if err != nil {
@@ -451,14 +470,18 @@ func TestManagerPromote(t *testing.T) {
 
 func TestManagerPromoteExpiredSource(t *testing.T) {
 	m := newTestManager(t)
-	if pc := clkOf(m); pc != nil { *pc = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) }
+	if pc := clkOf(m); pc != nil {
+		*pc = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	}
 	policy := defaultPolicy()
 	policy.DefaultTTL = 1 * time.Hour
 	ctx := context.Background()
 	if _, err := m.Put(ctx, policy, mm.MemoryItem{AgentID: "a", SessionID: "s1", Layer: mm.LayerLongTerm, Key: "k1", Content: "x"}); err != nil {
 		t.Fatalf("put: %v", err)
 	}
-	if pc:=clkOf(m); pc!=nil { *pc = pc.Add(2 * time.Hour) }
+	if pc := clkOf(m); pc != nil {
+		*pc = pc.Add(2 * time.Hour)
+	}
 	if _, err := m.Promote(ctx, policy, mm.Scope{AgentID: "a", SessionID: "s1", Layer: mm.LayerLongTerm}, "k1"); !errors.Is(err, mm.ErrMemoryNotFound) {
 		t.Fatalf("promote expired must return NotFound, got %v", err)
 	}

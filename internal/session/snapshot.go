@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/imshuai/yaa/internal/config"
-	"github.com/imshuai/yaa/internal/storage"
+	"github.com/v2up-32mb/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/storage"
 )
 
 // maxSessionSnapshotBytes 是 snapshot 编码结果的最大字节数。与根 Storage 的 MaxValueBytes 一致。

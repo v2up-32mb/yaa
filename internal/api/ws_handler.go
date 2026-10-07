@@ -11,8 +11,8 @@ import (
 	"github.com/gorilla/websocket"
 	"golang.org/x/exp/slog"
 
-	"github.com/imshuai/yaa/internal/agent"
-	"github.com/imshuai/yaa/internal/session"
+	"github.com/v2up-32mb/yaa/internal/agent"
+	"github.com/v2up-32mb/yaa/internal/session"
 )
 
 // turns 按 turnID 跟踪在途 turn，cancel 路径据此定位 HandleTurn 的 ctx。

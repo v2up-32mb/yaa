@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/imshuai/yaa/internal/config"
-	"github.com/imshuai/yaa/internal/tool"
+	"github.com/v2up-32mb/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/tool"
 )
 
 // ConfigQueryTool 是只读 introspection Tool, 把当前 Effective Config 的脱敏视图按 path 返回.

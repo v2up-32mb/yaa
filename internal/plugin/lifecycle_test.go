@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/imshuai/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/config"
 )
 
 // newManagerWithFailDialer 构造 Manager 使用 failDialer (Loader.Start 会 terminate 进程).
@@ -124,7 +124,6 @@ func TestStopAllIdempotent(t *testing.T) {
 	_ = m.WaitStopped()
 }
 
-
 // TestRetryRestartExhaustsAndErrors verifies that retryRestart returns false
 // when dialer consistently fails (attempts exhausted, no successful replacement).
 // retryRestart calls m.loader.Start; mock dialer with ErrPluginConnectionTimeout.
@@ -150,8 +149,8 @@ func TestRetryRestartExhaustsAndErrors(t *testing.T) {
 	old := &RPCClient{Exited: closedChan()}
 	e := &Entry{
 		Descriptor: PluginDescriptor{Manifest: Manifest{ID: "p"}},
-		Handle:    &ProxyHandle{},
-		State:     StateReady,
+		Handle:     &ProxyHandle{},
+		State:      StateReady,
 	}
 	e.Handle.Store(old)
 	m.entries["p"] = e

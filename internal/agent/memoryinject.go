@@ -3,8 +3,8 @@ package agent
 import (
 	"strings"
 
-	"github.com/imshuai/yaa/internal/config"
-	mm "github.com/imshuai/yaa/internal/memory"
+	"github.com/v2up-32mb/yaa/internal/config"
+	mm "github.com/v2up-32mb/yaa/internal/memory"
 )
 
 // memoryInjectMaxBytes 是 Memory system message 注入的固定字节上限

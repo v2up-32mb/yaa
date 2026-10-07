@@ -1,4 +1,4 @@
-module github.com/imshuai/yaa
+module github.com/v2up-32mb/yaa
 
 go 1.20
 

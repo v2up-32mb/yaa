@@ -3,7 +3,7 @@ package auth
 import (
 	"fmt"
 
-	"github.com/imshuai/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/config"
 )
 
 // Permission 权限定义（docs/auth/authorization.md §6.1）。

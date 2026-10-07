@@ -45,7 +45,7 @@ func TestListCursorRejectsTamperedCursor(t *testing.T) {
 		{"version wrong", makeCursor(digest, byte(2), 100)},
 		{"offset not page aligned", makeCursor(digest, byte(1), 50)},
 		{"offset >= total", makeCursor(digest, byte(1), 150)},
-}
+	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			raw, _ := json.Marshal(ListToolsParams{Cursor: c.cursor})
@@ -182,11 +182,11 @@ func TestCatalogDigestStable(t *testing.T) {
 // trimLine 去行尾换行, 不动行内空白 (docs §3.1).
 func TestTrimLine(t *testing.T) {
 	cases := map[string]string{
-		"abc\n":       "abc",
-		"abc\r\n":     "abc",
-		"abc\r":       "abc",
+		"abc\n":      "abc",
+		"abc\r\n":    "abc",
+		"abc\r":      "abc",
 		"  a\tb  \n": "  a\tb  ",
-		"":            "",
+		"":           "",
 	}
 	for in, want := range cases {
 		if got := trimLine(in); got != want {

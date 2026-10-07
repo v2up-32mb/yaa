@@ -3,8 +3,8 @@ package api
 import (
 	"context"
 
-	"github.com/imshuai/yaa/internal/config"
-	"github.com/imshuai/yaa/internal/memory"
+	"github.com/v2up-32mb/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/memory"
 )
 
 // MemoryProvider 由 memory.Manager 实现，注入到 API Server 供 Memory 8 端点调用

@@ -12,8 +12,8 @@ import (
 
 	"golang.org/x/exp/slog"
 
-	"github.com/imshuai/yaa/internal/config"
-	"github.com/imshuai/yaa/internal/tool"
+	"github.com/v2up-32mb/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/tool"
 )
 
 // Manager 管理 Plugin 发现、依赖图、启用决策和生命周期.
@@ -496,8 +496,8 @@ func (m *Manager) teardown() error {
 // 严格逆拓扑需 cache startup order — 后续 Phase 完整化补.
 func (m *Manager) entryIDsStartupReverse() []string {
 	type ordered struct {
-		id  string
-		ts  time.Time
+		id string
+		ts time.Time
 	}
 	var list []ordered
 	for id, e := range m.entries {

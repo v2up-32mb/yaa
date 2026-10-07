@@ -13,7 +13,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/imshuai/yaa/internal/tool"
+	"github.com/v2up-32mb/yaa/internal/tool"
 )
 
 // ConnectionStatus 是单个上游 MCP 连接的状态机取值。

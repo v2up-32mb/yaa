@@ -3,8 +3,8 @@ package config
 import (
 	"encoding/json"
 	"errors"
-	"os"
 	"fmt"
+	"os"
 	"path/filepath"
 	"reflect"
 	"testing"

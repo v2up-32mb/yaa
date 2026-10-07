@@ -183,8 +183,8 @@ func (g *Gauge) Set(val int64, labelValues ...string) {
 	g.child(labelValues).value.Store(val)
 }
 
-func (g *Gauge) Inc(labelValues ...string)  { g.Mod(1, labelValues...) }
-func (g *Gauge) Dec(labelValues ...string)  { g.Mod(-1, labelValues...) }
+func (g *Gauge) Inc(labelValues ...string) { g.Mod(1, labelValues...) }
+func (g *Gauge) Dec(labelValues ...string) { g.Mod(-1, labelValues...) }
 func (g *Gauge) Mod(by int64, labelValues ...string) {
 	if len(labelValues) != len(g.labelNames) {
 		panic(fmt.Sprintf("metrics: gauge %q got %d label values, want %d", g.name, len(labelValues), len(g.labelNames)))

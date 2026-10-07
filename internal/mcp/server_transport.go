@@ -18,10 +18,10 @@ import (
 type ServerSessionState string
 
 const (
-	SessionNew         ServerSessionState = "new"
-	SessionNegotiated  ServerSessionState = "negotiated"
-	SessionReady       ServerSessionState = "ready"
-	SessionClosed      ServerSessionState = "closed"
+	SessionNew        ServerSessionState = "new"
+	SessionNegotiated ServerSessionState = "negotiated"
+	SessionReady      ServerSessionState = "ready"
+	SessionClosed     ServerSessionState = "closed"
 )
 
 // ServerSession 是 Server 端连接的水平级 session 状态.
@@ -111,9 +111,9 @@ type ServerTransport interface {
 // stdin 读 JSON-RPC 按行, stdout 写出 JSON-RPC 按行.
 // stderr 仅日志, 不混入协议流.
 type StdioServer struct {
-	r       io.Reader
-	w       io.Writer
-	logger  *slog.Logger
+	r      io.Reader
+	w      io.Writer
+	logger *slog.Logger
 
 	mu        sync.Mutex
 	closeOnce sync.Once
@@ -282,9 +282,9 @@ func rpcErrorRaw(id json.RawMessage, code int, message string) []byte {
 		Message string `json:"message"`
 	}
 	type wireResp struct {
-		JSONRPC string         `json:"jsonrpc"`
+		JSONRPC string          `json:"jsonrpc"`
 		ID      json.RawMessage `json:"id,omitempty"`
-		Error   wireErr        `json:"error"`
+		Error   wireErr         `json:"error"`
 	}
 	r := wireResp{JSONRPC: "2.0", Error: wireErr{Code: code, Message: message}}
 	if len(id) > 0 {

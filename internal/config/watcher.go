@@ -14,8 +14,8 @@ import (
 // Watcher 监听单个配置文件, 防抖后触发 reload. 文档 §2.
 type Watcher struct {
 	fs       *fsnotify.Watcher
-	path     string        // 配置文件绝对路径
-	dirPath  string        // 配置文件所在目录 (fsnotify 监听目录以覆盖 rename)
+	path     string // 配置文件绝对路径
+	dirPath  string // 配置文件所在目录 (fsnotify 监听目录以覆盖 rename)
 	debounce time.Duration
 	reload   func() (ReloadResult, error)
 	onReload func(ReloadResult)

@@ -1,7 +1,7 @@
 package mcp
 
 import (
-	"github.com/imshuai/yaa/internal/metrics"
+	"github.com/v2up-32mb/yaa/internal/metrics"
 )
 
 // mcpMetrics 包装 MCP 模块 5 个指标引用 (docs/mcp/observability.md §2).

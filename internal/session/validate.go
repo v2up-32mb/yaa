@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/imshuai/yaa/internal/provider"
-	"github.com/imshuai/yaa/internal/storage"
+	"github.com/v2up-32mb/yaa/internal/provider"
+	"github.com/v2up-32mb/yaa/internal/storage"
 )
 
 // validateMessageRole 校验单条消息 role 与字段组合，返回 wand 违规的稳定错误。

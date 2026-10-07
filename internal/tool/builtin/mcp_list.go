@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/imshuai/yaa/internal/mcp"
-	"github.com/imshuai/yaa/internal/tool"
+	"github.com/v2up-32mb/yaa/internal/mcp"
+	"github.com/v2up-32mb/yaa/internal/tool"
 )
 
 // MCPListTool 投影 mcp.Manager.List() []ServerStatus 为按 name 升序的 JSON, 供 LLM 调用查看

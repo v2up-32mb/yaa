@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/imshuai/yaa/pkg/pluginrpc"
+	"github.com/v2up-32mb/yaa/pkg/pluginrpc"
 )
 
 // filteredPluginEnv 返回当前环境的子进程用副本, 去除敏感/不应回显的变量.

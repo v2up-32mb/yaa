@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/imshuai/yaa/internal/config"
-	"github.com/imshuai/yaa/internal/provider"
-	"github.com/imshuai/yaa/internal/tool"
+	"github.com/v2up-32mb/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/provider"
+	"github.com/v2up-32mb/yaa/internal/tool"
 )
 
 // buildToolManager 构造带 allow-all agent 的 Tool Manager，供 Manager 集成测试注册 MCP Proxy 用。
@@ -584,7 +584,7 @@ func TestCatalogMatches(t *testing.T) {
 		name:      "s1",
 		transport: "stdio",
 		cfg:       config.MCPServerConfig{Command: ""},
-		status: ServerStatus{Name: "s1", Status: StatusConnected},
+		status:    ServerStatus{Name: "s1", Status: StatusConnected},
 		tools: []tool.ToolInfo{
 			{Name: "mcp.s1.alpha", Description: "a", Parameters: json.RawMessage(`{"type":"object","properties":{"x":{"type":"string"}}}`)},
 			{Name: "mcp.s1.beta", Description: "b", Parameters: json.RawMessage(`{"type":"object","properties":{"y":{"type":"number"}}}`)},
@@ -886,7 +886,6 @@ func TestManagerRunUpstreamListChangedDriftMarksError(t *testing.T) {
 	}
 }
 
-
 // TestManagerPrepareSSEAutoStartRegistersTools 端到端验证 Manager.Prepare 处理 SSE transport:
 // 用 httptest fake SSE server, Manager.Prepare 启动 SSE 上游 + DiscoverTools + 注册稳定 Proxy +
 // runUpstream goroutine + ServerStatus.ProtocolVersion = 2024-11-05 (legacy SSE).
@@ -951,7 +950,6 @@ func TestManagerPrepareSSEAutoStartRegistersTools(t *testing.T) {
 		t.Fatal("Stop did not return within 5s (SSE runUpstream join deadlock)")
 	}
 }
-
 
 // TestManagerPrepareStreamableHTTPAutoStartRegistersTools 端到端验证 Manager.Prepare 处理 streamable_http transport:
 // fake stateless streamable server (POST 同步 JSON 响应, 协议 2025-03-26); Manager.Prepare 启动上游 +

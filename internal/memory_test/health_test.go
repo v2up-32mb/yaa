@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/imshuai/yaa/internal/config"
-	mm "github.com/imshuai/yaa/internal/memory"
-	"github.com/imshuai/yaa/internal/memory/memstore"
-	"github.com/imshuai/yaa/internal/memory/vector"
+	"github.com/v2up-32mb/yaa/internal/config"
+	mm "github.com/v2up-32mb/yaa/internal/memory"
+	"github.com/v2up-32mb/yaa/internal/memory/memstore"
+	"github.com/v2up-32mb/yaa/internal/memory/vector"
 )
 
 // brokenPingStore 包装 memstore.Store 让 Ping 返回错误，其余方法转发。

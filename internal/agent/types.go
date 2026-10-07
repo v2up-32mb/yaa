@@ -3,8 +3,8 @@ package agent
 import (
 	"errors"
 
-	"github.com/imshuai/yaa/internal/provider"
-	"github.com/imshuai/yaa/internal/session"
+	"github.com/v2up-32mb/yaa/internal/provider"
+	"github.com/v2up-32mb/yaa/internal/session"
 )
 
 // Status 是 Agent 生命周期状态。

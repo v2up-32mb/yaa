@@ -6,7 +6,7 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/imshuai/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/config"
 )
 
 // factory 把单个 ProviderConfig 构造成 adapter（不含重试包装）。

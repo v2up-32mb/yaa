@@ -52,13 +52,13 @@ type Manager struct {
 	byAgent   map[string][]ResolvedSkill
 	skillsDir string
 	metrics   *skillMetrics // nil → nop; docs/skill/observability.md §2
-	logger    *slog.Logger   // nil → log nop; docs/skill/observability.md §1
+	logger    *slog.Logger  // nil → log nop; docs/skill/observability.md §1
 }
 
 // 固定字节上限（docs/skill/README.md §2），不可配置。
 const (
 	maxSkillFile       = 1 << 20 // 1 MiB 整个 SKILL.md
-	maxDescription     = 4096     // description UTF-8 bytes
+	maxDescription     = 4096    // description UTF-8 bytes
 	maxPromptBody      = 256 << 10
 	maxOptionsBytes    = 64 << 10
 	maxDepsPerCategory = 64

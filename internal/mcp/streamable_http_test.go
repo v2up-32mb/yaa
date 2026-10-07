@@ -18,13 +18,13 @@ import (
 // 简单 stateless: POST 接 JSON-RPC, 返同步 application/json 响应 (initialize / tools/list / tools/call / ping).
 // 若初始化时启用 session, 返 Mcp-Session-Id header; 后续 POST 应携带.
 type fakeStreamableServer struct {
-	t          *testing.T
-	server     *httptest.Server
-	url        string
+	t           *testing.T
+	server      *httptest.Server
+	url         string
 	withSession bool
-	sessionID  string
-	mu         sync.Mutex
-	closed     atomic.Bool
+	sessionID   string
+	mu          sync.Mutex
+	closed      atomic.Bool
 }
 
 func newFakeStreamableServer(t *testing.T, withSession bool) *fakeStreamableServer {
@@ -288,11 +288,11 @@ func TestStreamableHTTPClientSSEResponse(t *testing.T) {
 // TestStreamableHTTPClientErrStatusMappings 覆盖 docs §3.3 错误表关键分支.
 func TestStreamableHTTPClientErrStatusMappings(t *testing.T) {
 	cases := []struct {
-		name     string
-		status   int
-		method   string // request method
-		hasSess  bool
-		wantIs   error
+		name    string
+		status  int
+		method  string // request method
+		hasSess bool
+		wantIs  error
 	}{
 		{"auth401 init", http.StatusUnauthorized, "initialize", false, ErrMCPAuthFailed},
 		{"auth403 init", http.StatusForbidden, "initialize", false, ErrMCPAuthFailed},
@@ -420,7 +420,6 @@ func TestStreamableHTTPClientCheckRedirectReject3xx(t *testing.T) {
 		t.Errorf("err=%v want ErrMCPProtocolError (3xx rejected treated as ProtocolError)", err)
 	}
 }
-
 
 // fakeStreamableServerWithSSE 是 newFakeStreamableServer 的增强版: 记录 DELETE 与 GET 调用,
 // 可选在 GET 路径返 SSE event 流推送自定义 message 帧 (用来驱动 Client.runSSERecvLoop 接收).

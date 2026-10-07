@@ -5,9 +5,9 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/imshuai/yaa/internal/agent"
-	"github.com/imshuai/yaa/internal/provider"
-	"github.com/imshuai/yaa/internal/session"
+	"github.com/v2up-32mb/yaa/internal/agent"
+	"github.com/v2up-32mb/yaa/internal/provider"
+	"github.com/v2up-32mb/yaa/internal/session"
 )
 
 // postMessageRequest 是 POST /sessions/:id/messages 入参。

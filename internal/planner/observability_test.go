@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/imshuai/yaa/internal/provider"
+	"github.com/v2up-32mb/yaa/internal/provider"
 
 	"golang.org/x/exp/slog"
 )
@@ -62,7 +62,8 @@ func TestPlanEmitsStartedAndCompletedEvents(t *testing.T) {
 			if attrs[i]["turn_id"] != "turn-1" {
 				t.Errorf("started turn_id=%q want turn-1", attrs[i]["turn_id"])
 			}
-			if attrs[i]["agent_id"] != "" {} // 由 setup 决定, 不强校
+			if attrs[i]["agent_id"] != "" {
+			} // 由 setup 决定, 不强校
 			if attrs[i]["model"] != "agent-model" {
 				t.Errorf("started model=%q want agent-model", attrs[i]["model"])
 			}

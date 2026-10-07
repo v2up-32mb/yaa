@@ -8,8 +8,8 @@ import (
 
 	"google.golang.org/protobuf/types/known/structpb"
 
-	"github.com/imshuai/yaa/pkg/pluginrpc"
-	pluginv1 "github.com/imshuai/yaa/pkg/pluginrpc/gen"
+	"github.com/v2up-32mb/yaa/pkg/pluginrpc"
+	pluginv1 "github.com/v2up-32mb/yaa/pkg/pluginrpc/gen"
 )
 
 // rpcAdapter 把 *pluginrpc.Client 适配为 pluginRPCInterface (internal type 形状).

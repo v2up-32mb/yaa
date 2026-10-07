@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/imshuai/yaa/internal/config"
-	"github.com/imshuai/yaa/internal/tool"
+	"github.com/v2up-32mb/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/tool"
 )
 
 // minimalValidYAMLBuiltin 是能通过校验的最小可加载配置 (重新声明避免依赖 config 测试包 helper).

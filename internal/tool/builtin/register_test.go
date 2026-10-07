@@ -4,10 +4,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/imshuai/yaa/internal/config"
-	"github.com/imshuai/yaa/internal/mcp"
-	"github.com/imshuai/yaa/internal/provider"
-	"github.com/imshuai/yaa/internal/tool"
+	"github.com/v2up-32mb/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/mcp"
+	"github.com/v2up-32mb/yaa/internal/provider"
+	"github.com/v2up-32mb/yaa/internal/tool"
 )
 
 // buildToolManagerForBuiltinTest 构造一个 allowall agent "a1" 的 Tool Manager

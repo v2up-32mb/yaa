@@ -14,15 +14,15 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/imshuai/yaa/internal/config"
-	"github.com/imshuai/yaa/internal/tool"
+	"github.com/v2up-32mb/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/tool"
 )
 
 // 列表分页相关常量 (docs/mcp/server.md §3).
 const (
-	listPageSize    = 100         // 固定 page size
-	listCursorV1    = byte(1)     // cursor version (1 byte; 仅 v1)
-	listCursorBytes = 1 + 16 + 4 // version + digest(16) + offset(uint32 BE) = 21 bytes
+	listPageSize     = 100        // 固定 page size
+	listCursorV1     = byte(1)    // cursor version (1 byte; 仅 v1)
+	listCursorBytes  = 1 + 16 + 4 // version + digest(16) + offset(uint32 BE) = 21 bytes
 	catalogDigestLen = 16         // SHA-256 前 16 bytes
 )
 

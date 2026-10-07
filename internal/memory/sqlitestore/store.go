@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/imshuai/yaa/internal/memory"
+	"github.com/v2up-32mb/yaa/internal/memory"
 
 	_ "modernc.org/sqlite"
 )

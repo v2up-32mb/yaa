@@ -29,7 +29,7 @@ func TestValidateManifestMissingID(t *testing.T) {
 		Version:         "0.1.0",
 		ProtocolVersion: "1",
 		Entry:           "x",
-		Provides: []CapabilityDescriptor{{Type: "tool", Name: "x", Description: "x", Schema: map[string]any{"type": "object"}}},
+		Provides:        []CapabilityDescriptor{{Type: "tool", Name: "x", Description: "x", Schema: map[string]any{"type": "object"}}},
 	}
 	err := ValidateManifest(m)
 	if err == nil {
@@ -43,7 +43,7 @@ func TestValidateManifestBadProtocolVersion(t *testing.T) {
 		Version:         "0.1.0",
 		ProtocolVersion: "2",
 		Entry:           "x",
-		Provides: []CapabilityDescriptor{{Type: "tool", Name: "x", Description: "x", Schema: map[string]any{"type": "object"}}},
+		Provides:        []CapabilityDescriptor{{Type: "tool", Name: "x", Description: "x", Schema: map[string]any{"type": "object"}}},
 	}
 	err := ValidateManifest(m)
 	if err == nil {
@@ -57,7 +57,7 @@ func TestValidateManifestNonToolCapability(t *testing.T) {
 		Version:         "0.1.0",
 		ProtocolVersion: "1",
 		Entry:           "x",
-		Provides: []CapabilityDescriptor{{Type: "provider", Name: "x", Description: "x", Schema: map[string]any{"type": "object"}}},
+		Provides:        []CapabilityDescriptor{{Type: "provider", Name: "x", Description: "x", Schema: map[string]any{"type": "object"}}},
 	}
 	err := ValidateManifest(m)
 	if err == nil {

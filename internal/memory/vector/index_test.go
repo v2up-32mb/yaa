@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/imshuai/yaa/internal/memory"
+	"github.com/v2up-32mb/yaa/internal/memory"
 )
 
 func TestVectorIndexUpsertDeleteSearch(t *testing.T) {
@@ -32,7 +32,7 @@ func TestVectorIndexUpsertDeleteSearch(t *testing.T) {
 		Layer:         memory.LayerLongTerm,
 		SessionID:     "s1",
 		IncludeGlobal: true,
-		Query:          []float32{1, 0, 0},
+		Query:         []float32{1, 0, 0},
 		Threshold:     0.0,
 	})
 	if err != nil {

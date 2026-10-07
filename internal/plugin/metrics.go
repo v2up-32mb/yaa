@@ -3,7 +3,7 @@
 package plugin
 
 import (
-	"github.com/imshuai/yaa/internal/metrics"
+	"github.com/v2up-32mb/yaa/internal/metrics"
 )
 
 // pluginMetrics 持有 docs/plugin/observability.md §3 中定义的 7 个指标.
@@ -25,7 +25,7 @@ func newPluginMetrics(r *metrics.Registry) *pluginMetrics {
 	m := &pluginMetrics{
 		startTotal:           metrics.NewCounter("yaa_plugin_start_total", "plugin", "result"),
 		startDurationSeconds: metrics.NewHistogram("yaa_plugin_start_duration_seconds", "plugin"),
-		active:                metrics.NewGauge("yaa_plugin_active"),
+		active:               metrics.NewGauge("yaa_plugin_active"),
 		rpcTotal:             metrics.NewCounter("yaa_plugin_rpc_total", "plugin", "method", "result"),
 		rpcDurationSeconds:   metrics.NewHistogram("yaa_plugin_rpc_duration_seconds", "plugin", "method"),
 		processExitTotal:     metrics.NewCounter("yaa_plugin_process_exit_total", "plugin", "code"),

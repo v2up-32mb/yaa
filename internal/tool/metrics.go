@@ -10,17 +10,17 @@ package tool
 import (
 	"errors"
 
-	"github.com/imshuai/yaa/internal/metrics"
+	"github.com/v2up-32mb/yaa/internal/metrics"
 )
 
 // toolMetrics 持有 6 个 tool 指标. nil 时所有接入点 nop (v1 不启用 metrics 环境).
 type toolMetrics struct {
-	callsCounter     *metrics.Counter     // yaa_tool_calls_total{tool, result}
-	durationHist     *metrics.Histogram   // yaa_tool_call_duration_seconds{tool}
-	errorsCounter    *metrics.Counter     // yaa_tool_errors_total{tool, class}
-	timeoutsCounter  *metrics.Counter     // yaa_tool_timeouts_total{tool}
-	concurrentGauge  *metrics.Gauge       // yaa_tool_concurrent
-	aliasProjErr     *metrics.Counter     // yaa_tool_alias_projection_errors_total{reason}
+	callsCounter    *metrics.Counter   // yaa_tool_calls_total{tool, result}
+	durationHist    *metrics.Histogram // yaa_tool_call_duration_seconds{tool}
+	errorsCounter   *metrics.Counter   // yaa_tool_errors_total{tool, class}
+	timeoutsCounter *metrics.Counter   // yaa_tool_timeouts_total{tool}
+	concurrentGauge *metrics.Gauge     // yaa_tool_concurrent
+	aliasProjErr    *metrics.Counter   // yaa_tool_alias_projection_errors_total{reason}
 }
 
 // SetMetrics 把 Registry 注入 Manager, 预先创建 6 个 Tool 指标并注册.

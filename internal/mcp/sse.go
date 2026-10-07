@@ -17,19 +17,19 @@ import (
 
 // SSE transport 常量 (docs/mcp/transport.md §3.2 / checklist §5).
 const (
-	sseMessageMaxBytes = 4 * 1024 * 1024 // 单条 JSON-RPC body 上限 4 MiB (与 stdio 一致 docs §2)
-	sseFrameMaxBytes   = sseMessageMaxBytes + 4 * 1024 // SSE frame 含 event:/id:/data: 字段头开销上限
+	sseMessageMaxBytes = 4 * 1024 * 1024             // 单条 JSON-RPC body 上限 4 MiB (与 stdio 一致 docs §2)
+	sseFrameMaxBytes   = sseMessageMaxBytes + 4*1024 // SSE frame 含 event:/id:/data: 字段头开销上限
 )
 
 // SSEClient 是 legacy MCP SSE 传输实现 (docs/mcp/transport.md §3.2).
 // wire 上 Client 类型为 "sse" (config transport="sse"); 兼容 MCP 2024-11-05 协议版本.
 // 接 GET 事件流 + POST 消息, 首帧必须是 event:endpoint data:<post-path>.
 type SSEClient struct {
-	url      string
-	headers  map[string]string
-	tls      *tlsConfig // docs §5 tls.ca_file; v1 仅记录, 真实 tls.Config 由外部 http.Client 提供
-	client   *http.Client
-	logger   *slog.Logger
+	url     string
+	headers map[string]string
+	tls     *tlsConfig // docs §5 tls.ca_file; v1 仅记录, 真实 tls.Config 由外部 http.Client 提供
+	client  *http.Client
+	logger  *slog.Logger
 
 	mu        sync.Mutex
 	started   bool
@@ -40,7 +40,7 @@ type SSEClient struct {
 	endpoint  string        // 解析后的 POST endpoint (绝对 URL, 已校验同 host)
 	lastID    string        // Last-Event-ID (用于未来重连续传, v1 仅记录不续传)
 	info      TransportInfo
-	recvReady chan struct{}  // Start 完成关闭; Recv 在此阻塞直到 Start ok
+	recvReady chan struct{} // Start 完成关闭; Recv 在此阻塞直到 Start ok
 	closeOnce sync.Once
 	closeErr  error
 	// procCtx 是 Start 持有的请求级 ctx; Close cancel 它强制断流
@@ -350,8 +350,8 @@ type sseFrame struct {
 // 注意: 仅返 frame, 由调用方决定是否作为 message 投递.
 func readSSEFrame(reader *bufio.Reader) (sseFrame, error) {
 	var (
-		f      sseFrame
-		datas  []string
+		f     sseFrame
+		datas []string
 	)
 	for {
 		line, err := reader.ReadString('\n')

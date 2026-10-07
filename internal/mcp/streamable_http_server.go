@@ -39,7 +39,7 @@ type StreamableHTTPServer struct {
 	mu          sync.Mutex
 	sessions    map[string]*streamableSession
 	idleTimeout time.Duration // 30min (docs §4); v1 const
-	maxSessions int          // 1024 (docs §4); v1 const
+	maxSessions int           // 1024 (docs §4); v1 const
 	closed      bool
 
 	serveOnce sync.Once

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/imshuai/yaa/internal/config"
+	"github.com/v2up-32mb/yaa/internal/config"
 )
 
 func testConfig(baseURL string, maxRetries int) config.ProviderConfig {

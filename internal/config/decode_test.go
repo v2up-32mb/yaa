@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
 )
 
 func TestDecodeIntoPreservesAbsentFieldsAndReplacesPresentSlices(t *testing.T) {
