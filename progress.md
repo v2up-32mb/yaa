@@ -3804,3 +3804,20 @@ plugin 52/52, session 58/58, skill 24/24, storage 23/23, tool 45/45
 - gofmt / go vet / go build ./... 全绿
 - CGO_ENABLED=0 GOOS=windows GOARCH=amd64 GOAMD64=v1 交叉编译通过
 - go test ./... 全绿
+
+---
+
+## #74 — 默认 WebUI 重写：ChatGPT / Chatbox 风格对话控制台
+
+### 变更（internal/api/webui/*）
+- 全新 `index.html` / `app.js` / `style.css`：对话优先布局（侧栏 Agent/会话列表 + 主聊天区 + 输入区）
+- 流式传输：fetch 手写 SSE 解析器订阅 `GET /sessions/:id/events` + `POST /messages` 触发 turn；token 走 Authorization 头；15s heartbeat 期间自动重连；断流时回退整段返回
+- 实时渲染：`assistant_delta`（rAF 节流）→ Markdown（marked+DOMPurify 本地 vendor，XSS 安全）；`reasoning_delta` → 可折叠"思考过程"块；`tool_call`/`tool_result` → 可展开工具调用卡片（成功/失败/运行中状态）
+- 会话管理：新建/切换/暂停/恢复/删除；`turn_id` 本地生成（crypto.randomUUID + 兼容回退）；发送后 abort fetch 即取消 turn（SSE 收 error code=canceled）
+- 设置：API Base URL / Bearer Token / 明暗主题，存 localStorage；token/Rbase 变化触发重连
+- 全部前端依赖本地 vendor：Vue3.4 + Element Plus 2.8.4 + icons + marked + DOMPurify（无 CDN，Win7 离线可用）；`webui.go` 的 /vendor 白名单扩到 7 个文件
+
+### 端到端验证（mock OpenAI 兼容网关）
+- 流式对话：queued→assistant_start→reasoning_delta→assistant_delta→assistant_done 全部帧渲染
+- 工具调用：tool_call→tool_result→第二轮→assistant_done，工具卡片与错误状态正确
+- 无头 Chromium CDP 实测：新建会话/输入/发送/流式/推理块/工具卡片/Markdown 渲染 0 报错

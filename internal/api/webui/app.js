@@ -1,373 +1,578 @@
-const { createApp, ref, reactive, computed, onMounted, nextTick } = Vue;
+/* Yaa! WebUI —— ChatGPT / Chatbox 风格对话控制台
+ * 依赖（本地 vendor，离线可用）：Vue3 + Element Plus + Icons + marked + DOMPurify
+ * 传输：SSE 订阅增量 + REST POST 触发 turn（token 经 Authorization 头）
+ */
+const { createApp, ref, reactive, computed, watch, nextTick, onMounted } = Vue;
+
+marked.setOptions({ gfm: true, breaks: false });
+
+let bootPromise = null;
 
 const app = createApp({
   setup() {
-    const view = ref('dashboard');
-    const token = ref(localStorage.getItem('yaa_token') || '');
+    // ---------- 状态 ----------
+    const booted = ref(false);
     const connected = ref(false);
-    const loading = ref(false);
-
-    const health = ref(null);
+    const streaming = ref(false);
+    const sseOk = ref(false);
     const agents = ref([]);
+    const providers = ref([]);
+    const agentId = ref('');
     const sessions = ref([]);
+    const sessionId = ref('');
     const messages = ref([]);
-    const memoryItems = ref([]);
-    const listData = ref([]);
-    const listColumns = ref([]);
-    const configText = ref('');
+    const draft = ref('');
+    const settingsOpen = ref(false);
+    const settings = reactive({ baseURL: '', token: '', theme: 'light' });
+    const lastUsage = ref(null);
+    const msgBox = ref(null);
+    const inputBox = ref(null);
+    const mdBox = ref(null);
 
-    const chat = reactive({ agent: '', session: '', text: '', sending: false });
-    const chatSessions = ref([]);
-    const sessionFilter = reactive({ agent: '', state: '' });
-    const memory = reactive({ agent: '', query: '', put: { key: '', content: '', session_id: '' } });
-    const memoryPutDialog = ref(false);
+    // 当前 turn 的实时状态
+    const live = reactive({ turnId: '', text: '', reasoning: '', tools: [], done: false, error: '' });
 
-    const pageTitle = computed(() => {
-      const map = {
-        dashboard: '仪表盘', chat: '对话', agents: 'Agents', sessions: 'Sessions',
-        memory: 'Memory', tools: 'Tools', skills: 'Skills', providers: 'Providers',
-        mcp: 'MCP', config: 'Config'
-      };
-      return map[view.value] || 'Yaa!';
-    });
+    let sseAbort = null;      // 当前 SSE AbortController
+    let sseReconnectTimer = null;
+    let currentTurnAbort = null;
+    let mdRaf = 0;
 
-    const statCards = computed(() => {
-      const h = health.value || {};
-      const agentsCount = (h.agents && h.agents.total) || 0;
-      return [
-        { label: '状态', value: h.status || '-', color: statusColor(h.status) },
-        { label: 'Ready', value: h.ready ? '是' : '否', color: h.ready ? '#67c23a' : '#f56c6c' },
-        { label: 'Agents', value: agentsCount, color: '#409eff' },
-        { label: '运行时长', value: formatUptime(h.uptime_seconds), color: '#909399' },
-      ];
-    });
+    // ---------- 派生 ----------
+    const currentAgent = computed(() => agents.value.find(a => a.id === agentId.value) || null);
+    const currentSession = computed(() => sessions.value.find(s => s.id === sessionId.value) || null);
+    const canSend = computed(() => !!sessionId.value && !!draft.value.trim() && !streaming.value);
 
-    const componentRows = computed(() => {
-      const c = (health.value && health.value.components) || {};
-      return Object.keys(c).sort().map(k => ({ name: k, status: c[k] }));
-    });
+    const hints = [
+      '帮我总结一下这个项目',
+      '列出当前可用的工具',
+      '你好，介绍一下你自己',
+      '用幽默的方式解释什么是 Agent',
+    ];
 
-    function statusColor(s) {
-      if (!s) return '#909399';
-      if (s === 'healthy' || s === 'running' || s === 'ready' || s === 'created') return '#67c23a';
-      if (s === 'degraded' || s === 'paused') return '#e6a23c';
-      if (s === 'not_ready' || s === 'unhealthy' || s === 'closed' || s === 'stopped') return '#f56c6c';
-      return '#909399';
-    }
-    function statusType(s) {
-      if (!s) return 'info';
-      if (s === 'healthy' || s === 'running' || s === 'ready' || s === 'created') return 'success';
-      if (s === 'degraded' || s === 'paused') return 'warning';
-      if (s === 'not_ready' || s === 'unhealthy' || s === 'closed' || s === 'stopped') return 'danger';
-      return 'info';
-    }
-
-    function headers() {
-      const h = { 'Content-Type': 'application/json' };
-      if (token.value) h['Authorization'] = 'Bearer ' + token.value;
+    // ---------- 工具函数 ----------
+    function headers(extra) {
+      const h = Object.assign({ 'Content-Type': 'application/json' }, extra || {});
+      if (settings.token) h['Authorization'] = 'Bearer ' + settings.token;
       return h;
     }
 
+    function apiBase() {
+      return (settings.baseURL || '').replace(/\/+$/, '');
+    }
+
     async function api(path, opts = {}) {
-      const res = await fetch(path, { headers: headers(), ...opts });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok || body.code !== 0) {
-        const msg = body.message || ('HTTP ' + res.status);
-        throw new Error(msg);
+      const res = await fetch(apiBase() + path, Object.assign({ headers: headers() }, opts));
+      let body = null;
+      try { body = await res.json(); } catch (e) { /* ignore */ }
+      if (!res.ok || !body || body.code !== 0) {
+        const msg = (body && body.message) ? `${body.message} (${body.code || res.status})` : ('HTTP ' + res.status);
+        const err = new Error(msg);
+        err.status = res.status;
+        throw err;
       }
       return body.data;
     }
 
-    function notify(msg, type = 'success') {
-      ElMessage({ message: msg, type, grouping: true });
+    function notify(msg, type = 'info') {
+      ElMessage({ message: msg, type, grouping: true, duration: 2200 });
     }
 
-    async function loadHealth() {
+    function newTurnId() {
+      return 'turn_' + (crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '') : String(Date.now()) + Math.random().toString(36).slice(2, 10));
+    }
+
+    function uuidShort() {
+      return (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2, 10));
+    }
+
+    function prettyJSON(s) {
+      if (!s) return '';
+      try { return JSON.stringify(JSON.parse(s), null, 1); } catch (e) { return s; }
+    }
+
+    function truncate(s, n) {
+      if (!s) return '';
+      return s.length > n ? s.slice(0, n) + '…' : s;
+    }
+
+    function statusLabel(s) {
+      return { running: '运行中', paused: '已暂停', stopped: '已停止' }[s] || s;
+    }
+
+    function sessionTitle(s) {
+      if (!s) return '';
+      const t = (s.metadata && s.metadata.title) || '';
+      if (t) return t;
+      const first = firstUserText(s);
+      return first ? first.slice(0, 28) : (s.id ? s.id.slice(0, 16) : '新会话');
+    }
+
+    function firstUserText(s) {
+      const m = messages.value.find(x => x.session_id === s.id && x.role === 'user');
+      return m ? m.content : '';
+    }
+
+    // ---------- 设置 / 主题 ----------
+    function loadSettings() {
       try {
-        health.value = await api('/api/v1/health');
-        connected.value = true;
-      } catch (e) {
-        connected.value = false;
-        health.value = null;
+        const st = JSON.parse(localStorage.getItem('yaa_ui') || '{}');
+        settings.baseURL = st.baseURL || '';
+        settings.token = st.token || '';
+        settings.theme = st.theme || 'light';
+      } catch (e) { /* ignore */ }
+      applyTheme();
+    }
+    function saveSettings() {
+      try {
+        localStorage.setItem('yaa_ui', JSON.stringify({
+          baseURL: settings.baseURL, token: settings.token, theme: settings.theme,
+        }));
+      } catch (e) { /* ignore */ }
+      applyTheme();
+    }
+    async function saveAndReconnect() {
+      saveSettings();
+      settingsOpen.value = false;
+      notify('设置已保存，重新连接…', 'info');
+      closeSSE();
+      if (currentTurnAbort) currentTurnAbort.abort();
+      bootPromise = boot();
+      await bootPromise;
+    }
+    function toggleTheme() {
+      settings.theme = settings.theme === 'dark' ? 'light' : 'dark';
+      saveSettings();
+    }
+    function applyTheme() {
+      document.documentElement.classList.toggle('dark', settings.theme === 'dark');
+    }
+
+    // ---------- 启动 ----------
+    async function boot() {
+      loadSettings();
+      applyTheme();
+      const healthPromise = api('/api/v1/health').catch(() => null);
+      const agentsPromise = api('/api/v1/agents?page_size=100').catch(e => ({ error: e }));
+      const providersPromise = api('/api/v1/providers').catch(() => null);
+      const [health, agentsRes, providersRes] = await Promise.all([healthPromise, agentsPromise, providersPromise]);
+      connected.value = !!(health && health.ready);
+      if (agentsRes && agentsRes.error) {
+        notify('加载 Agents 失败：' + agentsRes.error.message, 'error');
+      } else {
+        agents.value = (agentsRes && agentsRes.items) || [];
       }
+      if (providersRes) providers.value = providersRes.items || [];
+      booted.value = true;
+      if (agents.value.length) {
+        agentId.value = agents.value[0].id;
+        await onAgentChange();
+      }
+      pollHealth();
     }
 
-    async function loadAgents() {
-      loading.value = true;
+    let healthTimer = null;
+    async function pollHealth() {
+      const tick = async () => {
+        const h = await api('/api/v1/health').catch(() => null);
+        connected.value = !!(h && h.ready);
+      };
+      await tick();
+      healthTimer = setInterval(tick, 15000);
+    }
+
+    // ---------- Agent / Session ----------
+    async function onAgentChange() {
+      liveReset();
+      closeSSE();
+      currentTurnAbort && currentTurnAbort.abort();
+      sessionId.value = '';
+      messages.value = [];
+      if (!agentId.value) return;
       try {
-        const d = await api('/api/v1/agents?page_size=100');
-        agents.value = d.items || [];
+        const d = await api(`/api/v1/agents/${encodeURIComponent(agentId.value)}/sessions?page_size=100`);
+        sessions.value = d.items || [];
       } catch (e) {
-        notify('加载 Agents 失败: ' + e.message, 'error');
-      } finally {
-        loading.value = false;
+        sessions.value = [];
+        notify('加载会话失败：' + e.message, 'error');
       }
     }
 
     async function loadSessions() {
-      loading.value = true;
+      if (!agentId.value) return;
       try {
-        let url = '/api/v1/agents/' + (sessionFilter.agent || '') + '/sessions?page_size=100';
-        if (!sessionFilter.agent) url = '/api/v1/agents/' + (agents.value[0] ? agents.value[0].id : '') + '/sessions?page_size=100';
-        if (sessionFilter.state) url += '&state=' + sessionFilter.state;
-        const d = await api(url);
+        const d = await api(`/api/v1/agents/${encodeURIComponent(agentId.value)}/sessions?page_size=100`);
         sessions.value = d.items || [];
-      } catch (e) {
-        sessions.value = [];
-        notify('加载 Sessions 失败: ' + e.message, 'error');
-      } finally {
-        loading.value = false;
-      }
+      } catch (e) { /* ignore */ }
     }
 
-    async function agentAction(id, action) {
-      try {
-        const d = await api('/api/v1/agents/' + id + '/' + action, { method: 'POST' });
-        notify('Agent ' + id + ' → ' + (d.status || action));
-        await loadAgents();
-      } catch (e) {
-        notify('操作失败: ' + e.message, 'error');
-      }
-    }
-
-    async function sessionAction(id, action) {
-      try {
-        if (action === 'delete') {
-          await api('/api/v1/sessions/' + id, { method: 'DELETE' });
-        } else {
-          await api('/api/v1/sessions/' + id + '/' + action, { method: 'POST' });
-        }
-        notify('Session ' + action + ' 成功');
-        await loadSessions();
-      } catch (e) {
-        notify('操作失败: ' + e.message, 'error');
-      }
-    }
-
-    function sessionLabel(s) {
-      return s.id + ' (' + s.state + ', ' + s.message_count + ' msgs)';
-    }
-
-    async function onChatAgentChange() {
-      chat.session = '';
-      chatSessions.value = [];
-      messages.value = [];
-      if (chat.agent) {
-        try {
-          const d = await api('/api/v1/agents/' + chat.agent + '/sessions?page_size=100');
-          chatSessions.value = d.items || [];
-        } catch (e) {
-          notify('加载会话失败: ' + e.message, 'error');
-        }
-      }
-    }
-
-    async function onChatSessionChange() {
-      if (chat.session) await loadChatMessages();
-    }
-
-    async function createSessionForChat() {
-      if (!chat.agent) {
+    async function newChat() {
+      if (!agentId.value) {
         notify('请先选择 Agent', 'warning');
         return;
       }
+      if (streaming.value) { notify('请等待当前生成完成', 'warning'); return; }
       try {
-        const d = await api('/api/v1/agents/' + chat.agent + '/sessions', {
-          method: 'POST', body: JSON.stringify({})
-        });
-        chat.session = d.id;
-        await onChatAgentChange();
-        notify('会话已创建');
-      } catch (e) {
-        notify('创建会话失败: ' + e.message, 'error');
-      }
-    }
-
-    async function loadChatMessages() {
-      if (!chat.session) return;
-      try {
-        const d = await api('/api/v1/sessions/' + chat.session + '/messages?page_size=200');
-        messages.value = (d.items || []).slice().reverse();
-        await nextTick();
-        scrollChatBottom();
-      } catch (e) {
-        notify('加载消息失败: ' + e.message, 'error');
-      }
-    }
-
-    async function sendMessage() {
-      if (!chat.session || !chat.text.trim()) {
-        notify('请选择会话并输入内容', 'warning');
-        return;
-      }
-      chat.sending = true;
-      try {
-        await api('/api/v1/sessions/' + chat.session + '/messages', {
+        const d = await api(`/api/v1/agents/${encodeURIComponent(agentId.value)}/sessions`, {
           method: 'POST',
-          body: JSON.stringify({ content: chat.text })
+          body: JSON.stringify({ metadata: { source: 'webui' } }),
         });
-        chat.text = '';
-        await loadChatMessages();
+        await onAgentChange();
+        sessionId.value = d.id;
+        await openSession(d.id);
       } catch (e) {
-        notify('发送失败: ' + e.message, 'error');
-      } finally {
-        chat.sending = false;
+        notify('新建会话失败：' + e.message, 'error');
       }
     }
 
-    function scrollChatBottom() {
-      const el = document.querySelector('.chat-messages');
-      if (el) el.scrollTop = el.scrollHeight;
+    async function selectSession(id) {
+      if (streaming.value && id !== sessionId.value) { notify('请等待当前生成完成', 'warning'); return; }
+      if (id === sessionId.value) return;
+      currentTurnAbort && currentTurnAbort.abort();
+      sessionId.value = id;
+      await openSession(id);
     }
 
-    async function memorySearch() {
-      if (!memory.agent) {
-        notify('请选择 Agent', 'warning');
-        return;
-      }
-      loading.value = true;
+    async function openSession(id) {
+      liveReset();
+      closeSSE();
+      messages.value = [];
+      await loadMessages(id);
+      openSSE(id);
+      await nextTick();
+      scrollBottom(true);
+    }
+
+    async function loadMessages(id) {
+      if (!id) return;
       try {
-        const q = memory.query ? '?query=' + encodeURIComponent(memory.query) : '';
-        const d = await api('/api/v1/agents/' + memory.agent + '/memory' + q);
-        memoryItems.value = d.items || [];
+        const d = await api(`/api/v1/sessions/${encodeURIComponent(id)}/messages?page_size=200`);
+        messages.value = d.items || [];
       } catch (e) {
-        memoryItems.value = [];
-        notify('搜索失败: ' + e.message, 'error');
-      } finally {
-        loading.value = false;
+        notify('加载消息失败：' + e.message, 'error');
       }
     }
 
-    async function memoryPut() {
-      if (!memory.agent || !memory.put.key || !memory.put.content) {
-        notify('请填写 Agent、Key 和内容', 'warning');
-        return;
-      }
+    async function sessionCmd(cmd, s) {
       try {
-        await api('/api/v1/agents/' + memory.agent + '/memory', {
+        if (cmd === 'delete') {
+          if (!confirm(`确定删除会话 ${sessionTitle(s)}？此操作不可恢复。`)) return;
+          await api(`/api/v1/sessions/${encodeURIComponent(s.id)}`, { method: 'DELETE' });
+          if (sessionId.value === s.id) { messages.value = []; sessionId.value = ''; }
+        } else if (cmd === 'pause' || cmd === 'resume') {
+          await api(`/api/v1/sessions/${encodeURIComponent(s.id)}/${cmd}`, { method: 'POST' });
+        }
+        await loadSessions();
+        notify(`会话 ${cmd} 成功`, 'success');
+      } catch (e) {
+        notify(`操作失败：${e.message}`, 'error');
+      }
+    }
+
+    // ---------- SSE 订阅 ----------
+    function openSSE(id) {
+      if (!id) return;
+      closeSSE();
+      sseOk.value = false;
+      const ctrl = new AbortController();
+      sseAbort = ctrl;
+      const run = async () => {
+        try {
+          const res = await fetch(apiBase() + `/api/v1/sessions/${encodeURIComponent(id)}/events`, {
+            headers: headers({ Accept: 'text/event-stream' }),
+            signal: ctrl.signal,
+          });
+          if (!res.ok || !res.body) {
+            if (!ctrl.signal.aborted) { sseOk.value = false; scheduleSSEReconnect(id); }
+            return;
+          }
+          sseOk.value = true;
+          const reader = res.body.getReader();
+          const dec = new TextDecoder();
+          let buf = '';
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buf += dec.decode(value, { stream: true });
+            let idx;
+            while ((idx = buf.indexOf('\n\n')) >= 0) {
+              const block = buf.slice(0, idx);
+              buf = buf.slice(idx + 2);
+              handleSSEBlock(block);
+            }
+          }
+        } catch (e) {
+          if (!ctrl.signal.aborted) { sseOk.value = false; scheduleSSEReconnect(id); }
+        }
+      };
+      run();
+    }
+
+    function scheduleSSEReconnect(id) {
+      clearTimeout(sseReconnectTimer);
+      if (sseAbort !== null && id !== sessionId.value) return;
+      sseReconnectTimer = setTimeout(() => {
+        if (sessionId.value === id && !document.hidden) openSSE(id);
+      }, 3000);
+    }
+
+    function closeSSE() {
+      clearTimeout(sseReconnectTimer);
+      if (sseAbort) { sseAbort.abort(); sseAbort = null; }
+      sseOk.value = false;
+    }
+
+    function handleSSEBlock(block) {
+      let data = '';
+      for (const line of block.split('\n')) {
+        if (line.startsWith('data:')) {
+          const v = line.slice(5).trimStart();
+          data += v;
+        }
+      }
+      if (!data) return;
+      let frame;
+      try { frame = JSON.parse(data); } catch (e) { return; }
+      switch (frame.type) {
+        case 'queued': break;
+        case 'assistant_start':
+          if (!live.turnId || frame.turn_id === live.turnId) live.done = false;
+          break;
+        case 'reasoning_delta':
+          if (frame.turn_id === live.turnId) live.reasoning += frame.delta || '';
+          break;
+        case 'assistant_delta':
+          if (frame.turn_id === live.turnId) {
+            live.text += frame.delta || '';
+            scheduleMarkdown();
+          }
+          break;
+        case 'tool_call':
+          if (frame.turn_id === live.turnId) {
+            const tc = frame.tool_call || {};
+            live.tools.push({
+              id: tc.id, name: (tc.function && tc.function.name) || 'tool',
+              arguments: (tc.function && tc.function.arguments) || '',
+              done: false, is_error: false, statusText: '执行中…', open: false,
+              tool_call_id: tc.id, content: '',
+            });
+          }
+          break;
+        case 'tool_result':
+          if (frame.turn_id === live.turnId) {
+            const r = frame.tool_result || {};
+            const t = live.tools.find(x => x.tool_call_id === r.tool_call_id);
+            if (t) {
+              t.done = true;
+              t.is_error = !!r.is_error;
+              t.statusText = (r.is_error ? '执行失败：' : '') + truncate(r.content || '', 400);
+              t.content = r.content || '';
+            }
+          }
+          break;
+        case 'assistant_done':
+          if (!live.turnId || frame.turn_id === live.turnId) {
+            live.done = true;
+            if (frame.usage) lastUsage.value = frame.usage;
+            streaming.value = false;
+            currentTurnAbort = null;
+            liveResetTools();
+            // 以服务端已提交的消息为准重载，保证一致性
+            const sid = sessionId.value;
+            if (sid) { loadMessages(sid); loadSessions(); }
+          }
+          break;
+        case 'error':
+          if (!live.turnId || frame.turn_id === live.turnId) {
+            streaming.value = false;
+            currentTurnAbort = null;
+            if (frame.code === 'canceled') {
+              live.error = '已取消';
+            } else {
+              live.error = frame.message || '生成失败';
+            }
+            live.done = true;
+          }
+          break;
+        case 'session_end':
+          closeSSE();
+          break;
+      }
+    }
+
+    // ---------- 消息分组 ----------
+    const messageGroups = computed(() => {
+      const groups = [];
+      let g = null;
+      for (const m of messages.value) {
+        if (m.role === 'user') {
+          g = { key: m.id, userMessages: [m], assistantMessage: null, live: false, toolCalls: [], error: '', reasonOpen: false, reasoning: '', id: m.id };
+          groups.push(g);
+        } else if (m.role === 'assistant') {
+          const toolCalls = (m.tool_calls || []).map(tc => ({
+            id: tc.id, tool_call_id: tc.id, name: (tc.function && tc.function.name) || 'tool',
+            arguments: (tc.function && tc.function.arguments) || '',
+            done: true, is_error: !!m.is_error, statusText: '', open: false, content: '',
+          }));
+          if (g && !g.assistantMessage) {
+            g.assistantMessage = m;
+            g.toolCalls = toolCalls;
+            g.reasoning = m.reasoning_content || '';
+          } else {
+            g = { key: m.id, userMessages: [], assistantMessage: m, live: false, toolCalls: toolCalls, error: '', reasonOpen: false, reasoning: m.reasoning_content || '', id: m.id };
+            groups.push(g);
+          }
+        } else if (m.role === 'tool') {
+          // 关联到最近的助手 tool_call
+          if (g && g.toolCalls.length) {
+            const t = g.toolCalls.find(tc => tc.tool_call_id === m.tool_call_id) || g.toolCalls[g.toolCalls.length - 1];
+            t.done = true;
+            t.is_error = !!m.is_error;
+            t.statusText = truncate(m.content || '', 400);
+            t.content = m.content || '';
+          }
+        }
+      }
+      // 追加进行中的 turn
+      if (streaming.value && live.turnId) {
+        groups.push({
+          key: 'live-' + live.turnId, userMessages: [], assistantMessage: null,
+          live: true, toolCalls: live.tools || [], error: live.error || '',
+          reasonOpen: false, reasoning: live.reasoning || '', id: 'live',
+          liveText: live.text,
+        });
+      }
+      return groups;
+    });
+
+    function mdOfGroup(g) {
+      const text = g.live && g.liveText != null ? g.liveText : (g.assistantMessage ? g.assistantMessage.content : '');
+      if (!text) return '';
+      const html = marked.parse(text);
+      return DOMPurify.sanitize(html);
+    }
+
+    function reasoningText(g) {
+      return (g.live && g.liveText != null) ? live.reasoning : (g.reasoning || '');
+    }
+
+    function scheduleMarkdown() {
+      cancelAnimationFrame(mdRaf);
+      mdRaf = requestAnimationFrame(() => {
+        scrollBottom(false);
+        mdRaf = 0;
+      });
+    }
+
+    // ---------- 发送 ----------
+    async function send() {
+      if (!sessionId.value || !draft.value.trim() || streaming.value) return;
+      const content = draft.value.trim();
+      draft.value = '';
+      const turnId = newTurnId();
+      liveReset();
+      live.turnId = turnId;
+      streaming.value = true;
+      liveResetTools();
+      // 先把用户消息插进本地列表（REST POST 前 SSE 可能先到）
+      const sessionIdNow = sessionId.value;
+      const ctrl = new AbortController();
+      currentTurnAbort = ctrl;
+      try {
+        const post = api(`/api/v1/sessions/${encodeURIComponent(sessionIdNow)}/messages`, {
           method: 'POST',
-          body: JSON.stringify({
-            key: memory.put.key,
-            content: memory.put.content,
-            session_id: memory.put.session_id || ''
-          })
+          body: JSON.stringify({ turn_id: turnId, content }),
+          signal: ctrl.signal,
         });
-        notify('写入成功');
-        memoryPutDialog.value = false;
-        memory.put = { key: '', content: '', session_id: '' };
-        await memorySearch();
+        // 即使 SSE 未订阅，也先本地渲染用户消息
+        messages.value.push({
+          id: 'tmp-' + uuidShort(), session_id: sessionIdNow, role: 'user', content,
+          tool_calls: [], tool_call_id: '', created_at: new Date().toISOString(),
+        });
+        scrollBottom(true);
+        await post; // 等待 turn 完成（SSE 已实时推进）
       } catch (e) {
-        notify('写入失败: ' + e.message, 'error');
+        streaming.value = false;
+        currentTurnAbort = null;
+        live.done = true;
+        if (e.name !== 'AbortError') {
+          live.error = e.message || '发送失败';
+          notify('发送失败：' + e.message, 'error');
+        } else {
+          live.error = '已取消';
+        }
       }
     }
 
-    async function memoryDelete(key) {
-      if (!memory.agent) return;
-      try {
-        await api('/api/v1/agents/' + memory.agent + '/memory/' + encodeURIComponent(key), { method: 'DELETE' });
-        notify('删除成功');
-        await memorySearch();
-      } catch (e) {
-        notify('删除失败: ' + e.message, 'error');
+    function stopGenerate() {
+      if (currentTurnAbort) currentTurnAbort.abort();
+      // 通过 abort fetch 取消 turn；SSE 会收到 error(code=canceled)
+      setTimeout(() => { streaming.value = false; }, 300);
+    }
+
+    // ---------- UI 事件 ----------
+    function onKeydown(e) {
+      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+        e.preventDefault();
+        if (streaming.value) return;
+        send();
       }
     }
 
-    async function loadList(kind) {
-      loading.value = true;
-      try {
-        const urlMap = {
-          tools: '/api/v1/tools',
-          skills: '/api/v1/skills',
-          providers: '/api/v1/providers',
-          mcp: '/api/v1/mcp/servers'
-        };
-        const d = await api(urlMap[kind]);
-        listData.value = d.items || [];
-        listColumns.value = columnsFor(kind);
-      } catch (e) {
-        listData.value = [];
-        notify('加载失败: ' + e.message, 'error');
-      } finally {
-        loading.value = false;
-      }
+    function onScroll() {
+      // 自动滚动到顶部时停止吸底（预留）
     }
 
-    function columnsFor(kind) {
-      if (kind === 'tools') return [
-        { prop: 'name', label: '名称' }, { prop: 'description', label: '描述' },
-        { prop: 'source', label: '来源' }, { prop: 'enabled', label: '启用' }
-      ];
-      if (kind === 'skills') return [
-        { prop: 'name', label: '名称' }, { prop: 'description', label: '描述' }
-      ];
-      if (kind === 'providers') return [
-        { prop: 'id', label: 'ID' }, { prop: 'type', label: '类型' }, { prop: 'models', label: '模型' }
-      ];
-      if (kind === 'mcp') return [
-        { prop: 'name', label: '名称' }, { prop: 'transport', label: '传输' }, { prop: 'status', label: '状态' }
-      ];
-      return [];
+    function quickSend(text) {
+      draft.value = text;
+      inputBox.value && inputBox.value.focus();
+      if (currentSession.value) send();
+      else if (!sessionId.value) { newChat().then(() => setTimeout(send, 200)); }
     }
 
-    async function loadConfig() {
-      try {
-        const d = await api('/api/v1/config');
-        configText.value = JSON.stringify(d, null, 2);
-      } catch (e) {
-        configText.value = '加载失败: ' + e.message;
-      }
+    function scrollBottom(force) {
+      const el = msgBox.value;
+      if (!el) return;
+      if (force) { el.scrollTop = el.scrollHeight; return; }
+      const near = el.scrollHeight - el.scrollTop - el.clientHeight < 160;
+      if (near) el.scrollTop = el.scrollHeight;
     }
 
-    function saveToken() {
-      localStorage.setItem('yaa_token', token.value);
+    function liveReset() {
+      live.turnId = ''; live.text = ''; live.reasoning = ''; live.tools = []; live.done = false; live.error = '';
+    }
+    function liveResetTools() {
+      live.tools = [];
     }
 
-    function onMenuSelect(index) {
-      view.value = index;
-      routeView(index);
-    }
+    // ---------- 图标注册 ----------
+    // (在 mount 前完成；Element Plus 图标是独立包，需逐个注册为全局组件)
 
-    async function routeView(index) {
-      switch (index) {
-        case 'dashboard': await loadHealth(); break;
-        case 'agents': await loadAgents(); break;
-        case 'sessions': await loadAgents(); await loadSessions(); break;
-        case 'chat': await loadAgents(); break;
-        case 'memory': await loadAgents(); break;
-        case 'tools': case 'skills': case 'providers': case 'mcp': await loadList(index); break;
-        case 'config': await loadConfig(); break;
-      }
-    }
-
-    function formatTime(t) {
-      if (!t) return '';
-      const d = new Date(t);
-      return isNaN(d) ? t : d.toLocaleString();
-    }
-    function formatUptime(s) {
-      if (s == null) return '-';
-      const sec = Number(s);
-      if (sec < 60) return sec + 's';
-      if (sec < 3600) return Math.floor(sec / 60) + 'm ' + (sec % 60) + 's';
-      return Math.floor(sec / 3600) + 'h ' + Math.floor((sec % 3600) / 60) + 'm';
-    }
-
+    // ---------- 生命周期 ----------
     onMounted(async () => {
-      await loadHealth();
-      await loadAgents();
+      bootPromise = boot();
+      await bootPromise;
+    });
+    watch(streaming, v => {
+      if (v) scrollBottom(true);
     });
 
     return {
-      view, token, connected, loading, health, agents, sessions, messages,
-      memoryItems, listData, listColumns, configText, chat, chatSessions,
-      sessionFilter, memory, memoryPutDialog, pageTitle, statCards, componentRows,
-      onMenuSelect, saveToken, agentAction, sessionAction, sessionLabel,
-      onChatAgentChange, onChatSessionChange, createSessionForChat, loadChatMessages,
-      sendMessage, memorySearch, memoryPut, memoryDelete, formatTime, formatUptime,
-      statusType
+      booted, connected, streaming, sseOk, agents, providers, agentId, sessions, sessionId,
+      messages, draft, settingsOpen, settings, lastUsage, msgBox, inputBox, mdBox,
+      currentAgent, currentSession, canSend, messageGroups, hints,
+      onAgentChange, newChat, selectSession, sessionCmd, sessionTitle,
+      send, stopGenerate, onKeydown, onScroll, quickSend,
+      saveSettings, saveAndReconnect, toggleTheme,
+      prettyJSON, statusLabel, mdOfGroup, reasoningText,
     };
-  }
+  },
 });
 
-app.use(ElementPlus);
-app.mount('#app');
+// Element Plus 图标独立包：mount 前逐个注册为全局组件
+if (window.ElementPlusIconsVue) {
+  for (const [name, comp] of Object.entries(window.ElementPlusIconsVue)) {
+    app.component(name, comp);
+  }
+}
+
+app.use(ElementPlus).mount('#app');

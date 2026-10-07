@@ -45,10 +45,11 @@ func registerWebUI(r *mux.Router) {
 	r.HandleFunc("/index.html", serveFile("index.html"))
 	r.HandleFunc("/app.js", serveFile("app.js"))
 	r.HandleFunc("/style.css", serveFile("style.css"))
-	// vendor: 本地内置 Vue3 + Element Plus, 无 CDN 依赖, 离线/内网可用 (Windows 7 目标场景).
+	// vendor: 本地内置 Vue3 + Element Plus + marked + DOMPurify, 无 CDN 依赖, 离线/内网可用 (Windows 7 目标场景).
 	r.HandleFunc("/vendor/{name}", func(w http.ResponseWriter, req *http.Request) {
 		name := mux.Vars(req)["name"]
-		if name != "vue.global.prod.js" && name != "index.css" && name != "index.full.min.js" {
+		if name != "vue.global.prod.js" && name != "index.css" && name != "index.full.min.js" &&
+			name != "marked.min.js" && name != "purify.min.js" && name != "icons.min.js" {
 			http.NotFound(w, req)
 			return
 		}

@@ -3,250 +3,214 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Yaa! Runtime Console</title>
+  <title>Yaa! Runtime</title>
   <link rel="stylesheet" href="/vendor/index.css">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <div id="app">
-    <el-container class="app-shell">
-      <el-aside width="220px" class="sidebar">
-        <div class="brand">
-          <div class="brand-logo">Yaa!</div>
-          <div class="brand-sub">Agent Runtime</div>
+  <div id="app" v-cloak>
+    <div class="app-shell">
+      <!-- ============ 侧边栏 ============ -->
+      <aside class="sidebar" v-show="booted">
+        <div class="sidebar-head">
+          <div class="brand">
+            <div class="brand-logo">Yaa!</div>
+            <div class="brand-sub">
+              <span>Agent Runtime</span>
+              <span class="conn-dot" :class="connected ? 'ok' : 'bad'" :title="connected ? '已连接' : '未连接'"></span>
+            </div>
+          </div>
         </div>
-        <el-menu :default-active="view" @select="onMenuSelect" class="side-menu">
-          <el-menu-item index="dashboard"><span>仪表盘</span></el-menu-item>
-          <el-menu-item index="chat"><span>对话</span></el-menu-item>
-          <el-menu-item index="agents"><span>Agents</span></el-menu-item>
-          <el-menu-item index="sessions"><span>Sessions</span></el-menu-item>
-          <el-menu-item index="memory"><span>Memory</span></el-menu-item>
-          <el-menu-item index="tools"><span>Tools</span></el-menu-item>
-          <el-menu-item index="skills"><span>Skills</span></el-menu-item>
-          <el-menu-item index="providers"><span>Providers</span></el-menu-item>
-          <el-menu-item index="mcp"><span>MCP</span></el-menu-item>
-          <el-menu-item index="config"><span>Config</span></el-menu-item>
-        </el-menu>
-      </el-aside>
 
-      <el-container>
-        <el-header class="topbar">
-          <div class="topbar-title">{{ pageTitle }}</div>
-          <div class="topbar-actions">
-            <el-input v-model="token" placeholder="Bearer Token (可选)" clearable size="small"
-                      class="token-input" @change="saveToken"></el-input>
-            <el-tag :type="connected ? 'success' : 'danger'" size="small" effect="dark">
-              {{ connected ? '已连接' : '未连接' }}
-            </el-tag>
+        <button class="new-chat" @click="newChat" :disabled="!agents.length">
+          <el-icon><Plus /></el-icon>
+          <span>新建会话</span>
+        </button>
+
+        <div class="agent-select">
+          <el-select v-model="agentId" placeholder="选择 Agent" size="small" @change="onAgentChange">
+            <el-option v-for="a in agents" :key="a.id" :label="a.name + ' · ' + a.model" :value="a.id">
+              <div class="agent-opt">
+                <span>{{ a.name }}</span>
+                <code>{{ a.model }}</code>
+              </div>
+            </el-option>
+          </el-select>
+        </div>
+
+        <nav class="session-list" v-if="agentId">
+          <div class="session-list-title">
+            <span>Sessions</span>
+            <span class="count">{{ sessions.length }}</span>
           </div>
-        </el-header>
-
-        <el-main class="main">
-          <!-- 仪表盘 -->
-          <div v-if="view === 'dashboard'">
-            <el-row :gutter="16">
-              <el-col :span="6" v-for="c in statCards" :key="c.label">
-                <el-card shadow="hover" class="stat-card">
-                  <div class="stat-label">{{ c.label }}</div>
-                  <div class="stat-value" :style="{color: c.color}">{{ c.value }}</div>
-                </el-card>
-              </el-col>
-            </el-row>
-            <el-card shadow="never" class="section-card" header="组件状态">
-              <el-table :data="componentRows" size="small" stripe>
-                <el-table-column prop="name" label="组件" />
-                <el-table-column prop="status" label="状态">
-                  <template #default="{ row }">
-                    <el-tag :type="statusType(row.status)" size="small">{{ row.status }}</el-tag>
-                  </template>
-                </el-table-column>
-              </el-table>
-            </el-card>
+          <div v-if="!sessions.length" class="session-empty">
+            <p>还没有会话，点击上方「新建会话」开始。</p>
           </div>
+          <div v-for="s in sessions" :key="s.id"
+               class="session-item" :class="{ active: s.id === sessionId }"
+               @click="selectSession(s.id)">
+            <div class="session-item-main">
+              <div class="session-title">{{ sessionTitle(s) }}</div>
+              <div class="session-meta">
+                <span class="state" :class="s.state">{{ s.state }}</span>
+                <span>{{ s.message_count }} 条</span>
+              </div>
+            </div>
+            <el-dropdown trigger="click" @command="c => sessionCmd(c, s)" @click.stop>
+              <span class="session-more"><el-icon><MoreFilled /></el-icon></span>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="pause" :disabled="s.state !== 'active'" icon="VideoPause">暂停</el-dropdown-item>
+                  <el-dropdown-item command="resume" :disabled="s.state !== 'paused'" icon="VideoPlay">恢复</el-dropdown-item>
+                  <el-dropdown-item command="clear" disabled>清空消息</el-dropdown-item>
+                  <el-dropdown-item command="delete" divided icon="Delete">删除会话</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </div>
+        </nav>
 
-          <!-- 对话 -->
-          <div v-else-if="view === 'chat'" class="chat-view">
-            <el-card shadow="never" class="section-card">
-              <el-row :gutter="12" align="middle">
-                <el-col :span="6">
-                  <el-select v-model="chat.agent" placeholder="选择 Agent" filterable clearable
-                             style="width:100%" @change="onChatAgentChange">
-                    <el-option v-for="a in agents" :key="a.id" :label="a.name || a.id" :value="a.id" />
-                  </el-select>
-                </el-col>
-                <el-col :span="12">
-                  <el-select v-model="chat.session" placeholder="选择或新建 Session" filterable clearable
-                             style="width:100%" @change="onChatSessionChange">
-                    <el-option v-for="s in chatSessions" :key="s.id" :label="sessionLabel(s)" :value="s.id" />
-                  </el-select>
-                </el-col>
-                <el-col :span="6">
-                  <el-button type="primary" plain @click="createSessionForChat">新建会话</el-button>
-                  <el-button @click="loadChatMessages">刷新</el-button>
-                </el-col>
-              </el-row>
-            </el-card>
+        <div class="sidebar-foot">
+          <button class="foot-btn" @click="settingsOpen = true">
+            <el-icon><Setting /></el-icon><span>设置</span>
+          </button>
+          <button class="foot-btn" @click="toggleTheme">
+            <el-icon><component :is="settings.theme === 'dark' ? 'Sunny' : 'Moon'" /></el-icon>
+            <span>{{ settings.theme === 'dark' ? '浅色' : '深色' }}</span>
+          </button>
+        </div>
+      </aside>
 
-            <el-card shadow="never" class="chat-box">
-              <div class="chat-messages" ref="chatMessages">
-                <div v-if="messages.length === 0" class="chat-empty">选择 Agent 和 Session 后开始对话</div>
-                <div v-for="m in messages" :key="m.id" class="msg" :class="'msg-' + m.role">
-                  <div class="msg-head">
-                    <el-tag size="small" :type="m.role === 'user' ? 'primary' : 'success'">{{ m.role }}</el-tag>
-                    <span class="msg-time">{{ formatTime(m.created_at) }}</span>
+      <!-- ============ 主聊天区 ============ -->
+      <main class="chat">
+        <header class="chat-head">
+          <div class="chat-head-left">
+            <h2 class="chat-title" v-if="currentSession">
+              {{ sessionTitle(currentSession) }}
+              <span class="model-tag" v-if="currentAgent">{{ currentAgent.provider }} / {{ currentAgent.model }}</span>
+            </h2>
+            <h2 class="chat-title" v-else>{{ booted ? 'Yaa! 控制台' : '' }}</h2>
+            <span class="chat-state" v-if="streaming"><el-icon class="is-loading"><Loading /></el-icon> 生成中…</span>
+          </div>
+          <div class="chat-head-right" v-if="currentAgent">
+            <span class="agent-state" :class="currentAgent.status">{{ statusLabel(currentAgent.status) }}</span>
+            <span class="usage" v-if="lastUsage">
+              <el-icon><DataLine /></el-icon>
+              {{ lastUsage.prompt_tokens }} / {{ lastUsage.completion_tokens }} tok
+            </span>
+          </div>
+        </header>
+
+        <!-- 欢迎页 -->
+        <div class="welcome" v-if="!currentSession && booted">
+          <div class="welcome-logo">Yaa!</div>
+          <h3>你好，我是 Yaa! Agent</h3>
+          <p v-if="currentAgent">当前 Agent：<b>{{ currentAgent.name }}</b> · {{ currentAgent.model }}</p>
+          <p v-else>请先在左侧选择 Agent。</p>
+          <div class="welcome-hints">
+            <div class="hint" v-for="h in hints" :key="h" @click="quickSend(h)">{{ h }}</div>
+          </div>
+        </div>
+        <div class="welcome" v-if="!booted">
+          <div class="welcome-logo">Yaa!</div>
+          <h3>正在连接 Runtime …</h3>
+        </div>
+
+        <!-- 消息区 -->
+        <div class="messages" ref="msgBox" @scroll="onScroll">
+          <div v-for="g in messageGroups" :key="g.id" class="msg-group">
+            <!-- 用户消息 -->
+            <div v-for="m in g.userMessages" :key="m.id || m.key" class="msg user">
+              <div class="bubble">{{ m.content }}</div>
+            </div>
+
+            <!-- 助手消息 -->
+            <div v-if="g.assistantMessage || g.live" class="msg assistant">
+              <div class="avatar">Ya</div>
+              <div class="body">
+                <div v-if="reasoningText(g)" class="reasoning">
+                  <div class="reasoning-head" @click="g.reasonOpen = !g.reasonOpen">
+                    <el-icon><component :is="g.reasonOpen ? 'CaretBottom' : 'CaretRight'" /></el-icon>
+                    <span>思考过程</span>
+                    <span class="fade">{{ g.reasonOpen ? '收起' : '展开' }}</span>
                   </div>
-                  <div class="msg-content">{{ m.content }}</div>
-                  <div v-if="m.reasoning_content" class="msg-reasoning">{{ m.reasoning_content }}</div>
-                  <div v-if="m.tool_calls && m.tool_calls.length" class="msg-tools">
-                    <el-tag v-for="(tc, i) in m.tool_calls" :key="i" size="small" type="warning">
-                      {{ tc.function && tc.function.name ? tc.function.name : 'tool' }}
-                    </el-tag>
+                  <div v-show="g.reasonOpen" class="reasoning-body">{{ reasoningText(g) }}</div>
+                </div>
+
+                <div v-for="tc in g.toolCalls" :key="tc.id" class="tool-call" :class="{ running: !tc.done }">
+                  <div class="tool-head" @click="tc.open = !tc.open">
+                    <el-icon><component :is="tc.done ? (tc.is_error ? 'CircleCloseFilled' : 'CircleCheckFilled') : 'Loading'" :class="{ 'is-loading': !tc.done }" /></el-icon>
+                    <span class="tool-name">{{ tc.name }}</span>
+                    <span class="fade">{{ tc.done ? (tc.is_error ? '执行失败' : '执行完成') : '执行中…' }}</span>
+                  </div>
+                  <div v-show="tc.open" class="tool-detail">
+                    <div class="tool-args" v-if="tc.arguments">调用参数：<code>{{ prettyJSON(tc.arguments) }}</code></div>
+                    <div class="tool-result" v-if="tc.result != null">{{ tc.statusText }}</div>
                   </div>
                 </div>
+
+                <div class="md" ref="mdBox" v-html="mdOfGroup(g)"></div>
+                <div v-if="g.live && !g.assistantMessage" class="typing"><span></span><span></span><span></span></div>
               </div>
-              <div class="chat-input">
-                <el-input v-model="chat.text" type="textarea" :rows="3" placeholder="输入消息，Ctrl+Enter 发送"
-                          @keydown.ctrl.enter="sendMessage" />
-                <div class="chat-input-actions">
-                  <el-button type="primary" :loading="chat.sending" @click="sendMessage">发送</el-button>
-                </div>
-              </div>
-            </el-card>
-          </div>
+            </div>
 
-          <!-- Agents -->
-          <div v-else-if="view === 'agents'">
-            <el-card shadow="never" class="section-card" header="Agents">
-              <el-table :data="agents" size="small" stripe v-loading="loading">
-                <el-table-column prop="id" label="ID" />
-                <el-table-column prop="name" label="名称" />
-                <el-table-column prop="provider" label="Provider" />
-                <el-table-column prop="model" label="Model" />
-                <el-table-column prop="status" label="状态">
-                  <template #default="{ row }">
-                    <el-tag :type="statusType(row.status)" size="small">{{ row.status }}</el-tag>
-                  </template>
-                </el-table-column>
-                <el-table-column label="操作" width="240">
-                  <template #default="{ row }">
-                    <el-button size="small" @click="agentAction(row.id, 'start')">启动</el-button>
-                    <el-button size="small" @click="agentAction(row.id, 'pause')">暂停</el-button>
-                    <el-button size="small" type="danger" @click="agentAction(row.id, 'stop')">停止</el-button>
-                  </template>
-                </el-table-column>
-              </el-table>
-            </el-card>
+            <!-- 错误 -->
+            <div v-if="g.error" class="msg error">
+              <div class="bubble">{{ g.error }}</div>
+            </div>
           </div>
+        </div>
 
-          <!-- Sessions -->
-          <div v-else-if="view === 'sessions'">
-            <el-card shadow="never" class="section-card" header="Sessions">
-              <el-row :gutter="12" style="margin-bottom:12px">
-                <el-col :span="6">
-                  <el-select v-model="sessionFilter.agent" placeholder="按 Agent 过滤" clearable style="width:100%"
-                             @change="loadSessions">
-                    <el-option v-for="a in agents" :key="a.id" :label="a.name || a.id" :value="a.id" />
-                  </el-select>
-                </el-col>
-                <el-col :span="6">
-                  <el-select v-model="sessionFilter.state" placeholder="按状态过滤" clearable style="width:100%"
-                             @change="loadSessions">
-                    <el-option label="created" value="created" />
-                    <el-option label="running" value="running" />
-                    <el-option label="paused" value="paused" />
-                    <el-option label="closed" value="closed" />
-                  </el-select>
-                </el-col>
-              </el-row>
-              <el-table :data="sessions" size="small" stripe v-loading="loading">
-                <el-table-column prop="id" label="ID" show-overflow-tooltip />
-                <el-table-column prop="agent_id" label="Agent" />
-                <el-table-column prop="state" label="状态">
-                  <template #default="{ row }">
-                    <el-tag :type="statusType(row.state)" size="small">{{ row.state }}</el-tag>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="message_count" label="消息数" width="90" />
-                <el-table-column label="操作" width="300">
-                  <template #default="{ row }">
-                    <el-button size="small" @click="sessionAction(row.id, 'pause')">暂停</el-button>
-                    <el-button size="small" @click="sessionAction(row.id, 'resume')">恢复</el-button>
-                    <el-button size="small" @click="sessionAction(row.id, 'close')">关闭</el-button>
-                    <el-button size="small" type="danger" @click="sessionAction(row.id, 'delete')">删除</el-button>
-                  </template>
-                </el-table-column>
-              </el-table>
-            </el-card>
+        <!-- 输入区 -->
+        <div class="composer-wrap" v-if="booted">
+          <div class="composer">
+            <textarea ref="inputBox" v-model="draft" rows="1"
+                      :placeholder="currentSession ? (streaming ? '正在生成…' : '输入消息，Enter 发送，Shift+Enter 换行') : '请先选择或新建会话'"
+                      :disabled="streaming"
+                      @keydown="onKeydown"></textarea>
+            <button class="send-btn" :class="{ stop: streaming }" :disabled="!canSend && !streaming" @click="streaming ? stopGenerate() : send()">
+              <el-icon v-if="!streaming"><Promotion /></el-icon>
+              <el-icon v-else><Square /></el-icon>
+            </button>
           </div>
-
-          <!-- Memory -->
-          <div v-else-if="view === 'memory'">
-            <el-card shadow="never" class="section-card" header="Memory">
-              <el-row :gutter="12" style="margin-bottom:12px">
-                <el-col :span="6">
-                  <el-select v-model="memory.agent" placeholder="选择 Agent" filterable style="width:100%">
-                    <el-option v-for="a in agents" :key="a.id" :label="a.name || a.id" :value="a.id" />
-                  </el-select>
-                </el-col>
-                <el-col :span="12">
-                  <el-input v-model="memory.query" placeholder="搜索关键词" clearable @keyup.enter="memorySearch" />
-                </el-col>
-                <el-col :span="6">
-                  <el-button type="primary" @click="memorySearch">搜索</el-button>
-                  <el-button @click="memoryPutDialog = true">写入</el-button>
-                </el-col>
-              </el-row>
-              <el-table :data="memoryItems" size="small" stripe v-loading="loading">
-                <el-table-column prop="key" label="Key" show-overflow-tooltip />
-                <el-table-column prop="content" label="内容" show-overflow-tooltip />
-                <el-table-column prop="score" label="相似度" width="90">
-                  <template #default="{ row }">{{ row.score != null ? row.score.toFixed(4) : '-' }}</template>
-                </el-table-column>
-                <el-table-column label="操作" width="120">
-                  <template #default="{ row }">
-                    <el-button size="small" type="danger" @click="memoryDelete(row.key)">删除</el-button>
-                  </template>
-                </el-table-column>
-              </el-table>
-            </el-card>
+          <div class="composer-hint" v-if="currentSession">
+            <span class="conn" :class="sseOk ? 'ok' : 'bad'">
+              <el-icon><component :is="sseOk ? 'Connection' : 'Warning'" /></el-icon>
+              {{ sseOk ? '流式已连接' : '流式未连接（仍可发送，结果将整段返回）' }}
+            </span>
           </div>
+        </div>
+      </main>
+    </div>
 
-          <!-- Tools / Skills / Providers / MCP -->
-          <div v-else-if="view === 'tools' || view === 'skills' || view === 'providers' || view === 'mcp'">
-            <el-card shadow="never" class="section-card" :header="pageTitle">
-              <el-table :data="listData" size="small" stripe v-loading="loading">
-                <el-table-column v-for="col in listColumns" :key="col.prop" :prop="col.prop" :label="col.label"
-                                 show-overflow-tooltip />
-              </el-table>
-            </el-card>
-          </div>
-
-          <!-- Config -->
-          <div v-else-if="view === 'config'">
-            <el-card shadow="never" class="section-card" header="Config (Redacted)">
-              <pre class="config-pre">{{ configText }}</pre>
-            </el-card>
-          </div>
-        </el-main>
-      </el-container>
-    </el-container>
-
-    <!-- Memory 写入弹窗 -->
-    <el-dialog v-model="memoryPutDialog" title="写入 Memory" width="480px">
-      <el-form label-width="90px">
-        <el-form-item label="Key"><el-input v-model="memory.put.key" /></el-form-item>
-        <el-form-item label="内容"><el-input v-model="memory.put.content" type="textarea" :rows="4" /></el-form-item>
-        <el-form-item label="SessionID"><el-input v-model="memory.put.session_id" placeholder="可选" /></el-form-item>
-      </el-form>
+    <!-- 设置对话框 -->
+    <el-dialog v-model="settingsOpen" title="设置" width="420px" class="settings-dialog">
+      <div class="setting-row">
+        <label>API 地址</label>
+        <el-input v-model="settings.baseURL" placeholder="/（默认同源）" @change="saveSettings">
+          <template #prepend>Base</template>
+        </el-input>
+      </div>
+      <div class="setting-row">
+        <label>Bearer Token</label>
+        <el-input v-model="settings.token" type="password" show-password placeholder="留空 = 不启用认证" @change="saveSettings" />
+      </div>
+      <div class="setting-row">
+        <label>主题</label>
+        <el-segmented v-model="settings.theme" :options="['light', 'dark']" @change="applyTheme" />
+      </div>
       <template #footer>
-        <el-button @click="memoryPutDialog = false">取消</el-button>
-        <el-button type="primary" @click="memoryPut">保存</el-button>
+        <el-button size="small" @click="settingsOpen = false">关闭</el-button>
+        <el-button size="small" type="primary" @click="saveAndReconnect()">保存并重连</el-button>
       </template>
     </el-dialog>
   </div>
 
   <script src="/vendor/vue.global.prod.js"></script>
   <script src="/vendor/index.full.min.js"></script>
+  <script src="/vendor/icons.min.js"></script>
+  <script src="/vendor/marked.min.js"></script>
+  <script src="/vendor/purify.min.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>
