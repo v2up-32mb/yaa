@@ -2,14 +2,122 @@ name: ci
 
 on:
   push:
+    branches: [main]
+    tags: ["v*"]
   pull_request:
 
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # 目标平台基线：Go 1.20 是支持 Windows 7 SP1 的最后一个 Go 版本。
+  # GOAMD64=v1 让二进制兼容 SSE2 级别的老 x64 CPU（Win7 时代机器）。
+  GOAMD64: v1
+
 jobs:
+  # ---- 静态检查 + 全量测试（含跨平台编译门禁）----
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: 1.20.14
-      - run: go test ./...
+          cache: true
+      - name: gofmt 检查
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "以下文件未通过 gofmt："
+            echo "$unformatted"
+            exit 1
+          fi
+      - name: go vet
+        run: go vet ./...
+      - name: go test
+        run: go test ./...
+      - name: Windows 7 交叉编译（CGO_ENABLED=0）
+        run: |
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o /tmp/yaa-win7.exe ./cmd/yaa
+          test -f /tmp/yaa-win7.exe
+      - name: Windows 交叉编译测试包（确保无平台编译错误）
+        run: |
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go vet ./...
+
+  # ---- 跨平台构建矩阵 ----
+  build:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: windows
+            goarch: amd64
+            artifact: yaa-windows-amd64.exe
+          - goos: linux
+            goarch: amd64
+            artifact: yaa-linux-amd64
+          - goos: linux
+            goarch: arm64
+            artifact: yaa-linux-arm64
+          - goos: darwin
+            goarch: amd64
+            artifact: yaa-darwin-amd64
+          - goos: darwin
+            goarch: arm64
+            artifact: yaa-darwin-arm64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.20.14
+          cache: true
+      - name: 计算版本号
+        id: version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          [ "$VERSION" = "${GITHUB_REF_NAME}" ] && VERSION="0.1.0"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      - name: 构建 ${{ matrix.goos }}/${{ matrix.goarch }}
+        run: |
+          CGO_ENABLED=0 \
+          GOOS=${{ matrix.goos }} \
+          GOARCH=${{ matrix.goarch }} \
+          go build -trimpath -ldflags "-s -w \
+            -X github.com/v2up-32mb/yaa/internal/api.Version=${{ steps.version.outputs.version }} \
+            -X github.com/v2up-32mb/yaa/internal/api.GitCommit=${{ github.sha }} \
+            -X github.com/v2up-32mb/yaa/internal/api.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -o dist/${{ matrix.artifact }} ./cmd/yaa
+      - name: 校验产物
+        run: file dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}
+          if-no-files-found: error
+
+  # ---- 打 tag v* 时发布 Release（含 SHA256）----
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [test, build]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: 下载全部构建产物
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: 生成 SHA256 校验和
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      - name: 发布到 GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

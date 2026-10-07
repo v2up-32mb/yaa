@@ -1,8 +1,10 @@
 # Yet Another Agent
 
+![CI](https://github.com/v2up-32mb/yaa/actions/workflows/ci.yml/badge.svg)
+
 > 一个现代化、可扩展、长期运行的 Agent Runtime。
 
-**Yet Another Agent**（简称 **Yaa!**）是一个使用 Go 编写的 Agent Runtime。
+**Yet Another Agent**（简称 **Yaa!**）是一个使用 Go 编写的 Agent Runtime，目标平台 **Windows 7 SP1 x64**（Go 1.20 · `CGO_ENABLED=0` · 单二进制）。
 
 Yaa! 不提供聊天界面，也不是一个命令行工具。
 
