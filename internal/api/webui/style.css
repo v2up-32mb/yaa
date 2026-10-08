@@ -271,6 +271,12 @@ code { font-family: Consolas, "Courier New", monospace; }
 /* ---------------- 设置对话框 ---------------- */
 .settings-dialog .setting-row { margin-bottom: 16px; }
 .settings-dialog label { display: block; font-size: 12px; color: var(--text-sub); margin-bottom: 6px; }
+.setting-tip { font-size: 12px; color: var(--text-faint); margin: -8px 0 12px; }
+.setting-error { font-size: 12px; color: var(--danger); margin-bottom: 12px; }
+.cfg-collapse { margin-bottom: 8px; }
+.cfg-pre { max-height: 260px; overflow: auto; font-size: 11px; line-height: 1.5; background: var(--bg-sunken, #f6f7f9); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; margin: 0; white-space: pre-wrap; word-break: break-all; }
+.welcome-warn { color: var(--warn); }
+.welcome-warn code { font-size: 12px; }
 
 /* 滚动条 */
 ::-webkit-scrollbar { width: 8px; height: 8px; }

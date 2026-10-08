@@ -37,6 +37,7 @@ func TestValidatorNil(t *testing.T) {
 
 func TestValidatorAggregatesAndSortsErrors(t *testing.T) {
 	cfg := Default()
+	cfg.Agents = []AgentConfig{}
 	cfg.Context.Strategy = "bogus"
 	cfg.Log.Level = "trace"
 	cfg.MCP.Timeout.Connect = 0
@@ -62,6 +63,7 @@ func TestValidatorAggregatesAndSortsErrors(t *testing.T) {
 
 func TestValidatorContinuesAfterMissingProviderID(t *testing.T) {
 	cfg := Default()
+	cfg.Agents = []AgentConfig{}
 	cfg.Providers = []ProviderConfig{{
 		Models:        []ModelConfig{{ID: "model"}},
 		RetryInterval: time.Second,
@@ -83,6 +85,7 @@ func TestValidatorContinuesAfterMissingProviderID(t *testing.T) {
 
 func TestValidatorDefersExtensionProviderAddressValidation(t *testing.T) {
 	cfg := Default()
+	cfg.Agents = []AgentConfig{}
 	cfg.Providers = []ProviderConfig{{
 		ID:            "extension",
 		Type:          "linked-extension",

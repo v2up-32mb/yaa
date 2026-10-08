@@ -8,12 +8,15 @@ import (
 )
 
 // Default returns a complete configuration populated with built-in defaults.
+// 默认自带一个本地 Ollama provider 与一个默认 agent，保证开箱即可在
+// WebUI 建会话对话（Ollama 未运行时对话会报连接错误，需先启动 Ollama
+// 或改配其它 provider；ollama 类型免 api_key，故默认可通过校验）。
 func Default() *Config {
 	return &Config{
 		ConfigVersion: CurrentSchemaVersion.String(),
 		Runtime:       DefaultRuntimeConfig(),
-		Agents:        []AgentConfig{},
-		Providers:     []ProviderConfig{},
+		Agents:        DefaultAgentsConfig(),
+		Providers:     DefaultProvidersConfig(),
 		MCP:           DefaultMCPConfig(),
 		Tools:         DefaultToolsConfig(),
 		Skills:        DefaultSkillsConfig(),
@@ -23,6 +26,49 @@ func Default() *Config {
 		Planner:       DefaultPlannerConfig(),
 		Plugins:       DefaultPluginsConfig(),
 		Log:           DefaultLogConfig(),
+	}
+}
+
+// DefaultProvidersConfig 返回默认 Provider 列表：本地 Ollama（免 api_key）。
+func DefaultProvidersConfig() []ProviderConfig {
+	return []ProviderConfig{
+		{
+			ID:            "local-ollama",
+			Type:          "ollama",
+			BaseURL:       "http://127.0.0.1:11434",
+			Timeout:       60 * time.Second,
+			MaxRetries:    2,
+			RetryInterval: 2 * time.Second,
+			Models: []ModelConfig{
+				{
+					ID:                "qwen2.5:7b",
+					Name:              "Qwen 2.5 7B",
+					ContextWindow:     32768,
+					MaxOutput:         8192,
+					SupportsTools:     true,
+					SupportsStreaming: true,
+				},
+			},
+		},
+	}
+}
+
+// DefaultAgentsConfig 返回默认 Agent 列表：纯对话助手（无 tools/skills，
+// 用户按需在配置文件中增配）。
+func DefaultAgentsConfig() []AgentConfig {
+	return []AgentConfig{
+		{
+			ID:           "default",
+			Name:         "默认助手",
+			Provider:     "local-ollama",
+			Model:        "qwen2.5:7b",
+			SystemPrompt: "你是一个运行在本地的 AI 助手，使用中文回答。",
+			Tools:        []string{},
+			Skills:       []string{},
+			MaxTokens:    4096,
+			ToolsConfig:  map[string]any{},
+			SkillsConfig: map[string]AgentSkillConfig{},
+		},
 	}
 }
 

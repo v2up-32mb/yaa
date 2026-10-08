@@ -133,6 +133,7 @@ runtime:
   api:
     http:
       addr: "127.0.0.1:9090"
+agents: []
 providers:
   - id: openai
     type: openai

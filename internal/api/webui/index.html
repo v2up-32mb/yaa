@@ -106,7 +106,8 @@
           <div class="welcome-logo">Yaa!</div>
           <h3>你好，我是 Yaa! Agent</h3>
           <p v-if="currentAgent">当前 Agent：<b>{{ currentAgent.name }}</b> · {{ currentAgent.model }}</p>
-          <p v-else>请先在左侧选择 Agent。</p>
+          <p v-else-if="agents.length">请先在左侧选择 Agent。</p>
+          <p v-else class="welcome-warn">暂无可用 Agent：请在配置文件中添加 providers / agents（可运行 <code>yaa config defaults</code> 查看完整示例），然后重启 Runtime。</p>
           <div class="welcome-hints">
             <div class="hint" v-for="h in hints" :key="h" @click="quickSend(h)">{{ h }}</div>
           </div>
@@ -199,6 +200,17 @@
         <label>主题</label>
         <el-segmented v-model="settings.theme" :options="['light', 'dark']" @change="applyTheme" />
       </div>
+      <el-divider>服务端配置（只读）</el-divider>
+      <p class="setting-tip">查看运行时各配置项的脱敏快照。修改请编辑配置文件后重启（部分字段支持热更新）。</p>
+      <div class="setting-row">
+        <el-button size="small" :loading="serverCfgLoading" @click="loadServerConfig">加载服务端配置</el-button>
+      </div>
+      <div v-if="serverCfgError" class="setting-error">{{ serverCfgError }}</div>
+      <el-collapse v-if="serverCfg" v-model="serverCfgOpen" class="cfg-collapse">
+        <el-collapse-item v-for="(v, k) in serverCfg" :key="k" :title="k" :name="k">
+          <pre class="cfg-pre">{{ prettyCfg(v) }}</pre>
+        </el-collapse-item>
+      </el-collapse>
       <template #footer>
         <el-button size="small" @click="settingsOpen = false">关闭</el-button>
         <el-button size="small" type="primary" @click="saveAndReconnect()">保存并重连</el-button>

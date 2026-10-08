@@ -14,8 +14,19 @@ func TestDefaultConfigUsesCanonicalValues(t *testing.T) {
 	if cfg.ConfigVersion != "1.0" {
 		t.Fatalf("ConfigVersion = %q, want 1.0", cfg.ConfigVersion)
 	}
-	if !reflect.DeepEqual(cfg.Agents, []AgentConfig{}) || !reflect.DeepEqual(cfg.Providers, []ProviderConfig{}) {
-		t.Fatalf("empty root slices = %#v/%#v, want non-nil empty slices", cfg.Agents, cfg.Providers)
+	// 默认自带本地 Ollama provider + 默认 agent，开箱即可建会话对话。
+	if len(cfg.Providers) != 1 || cfg.Providers[0].ID != "local-ollama" || cfg.Providers[0].Type != "ollama" {
+		t.Fatalf("default providers = %#v, want single local-ollama", cfg.Providers)
+	}
+	if len(cfg.Providers[0].Models) != 1 || cfg.Providers[0].Models[0].ID != "qwen2.5:7b" {
+		t.Fatalf("default provider models = %#v, want single qwen2.5:7b", cfg.Providers[0].Models)
+	}
+	if len(cfg.Agents) != 1 || cfg.Agents[0].ID != "default" || cfg.Agents[0].Provider != "local-ollama" ||
+		cfg.Agents[0].Model != "qwen2.5:7b" || cfg.Agents[0].MaxTokens != 4096 {
+		t.Fatalf("default agents = %#v, want single default agent on local-ollama", cfg.Agents)
+	}
+	if !reflect.DeepEqual(cfg.Agents[0].Tools, []string{}) || !reflect.DeepEqual(cfg.Agents[0].Skills, []string{}) {
+		t.Fatalf("default agent tools/skills = %#v/%#v, want non-nil empty slices", cfg.Agents[0].Tools, cfg.Agents[0].Skills)
 	}
 
 	// 默认路径收敛到默认工作目录（~/yaa），避免不同 cwd 启动使用不同数据。
@@ -84,13 +95,16 @@ func TestDefaultConfigUsesCanonicalValues(t *testing.T) {
 func TestDefaultConstructorsReturnFreshContainers(t *testing.T) {
 	one := Default()
 	one.Agents = append(one.Agents, AgentConfig{ID: "changed"})
+	one.Providers = append(one.Providers, ProviderConfig{ID: "changed"})
 	one.MCP.Servers = append(one.MCP.Servers, MCPServerConfig{Name: "changed"})
 	one.MCP.Server.ExposedTools = append(one.MCP.Server.ExposedTools, "changed")
 	one.Tools.Builtin["shell"].Options["working_dir"] = "/changed"
 	one.Plugins.Paths[0] = "/changed"
 
 	two := Default()
-	if len(two.Agents) != 0 || len(two.MCP.Servers) != 0 || len(two.MCP.Server.ExposedTools) != 0 {
+	if len(two.Agents) != 1 || two.Agents[0].ID != "default" ||
+		len(two.Providers) != 1 || two.Providers[0].ID != "local-ollama" ||
+		len(two.MCP.Servers) != 0 || len(two.MCP.Server.ExposedTools) != 0 {
 		t.Fatal("Default reused slice backing storage")
 	}
 	if got := two.Tools.Builtin["shell"].Options["working_dir"]; got != WorkDir() {

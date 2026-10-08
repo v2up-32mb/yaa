@@ -29,6 +29,11 @@ const app = createApp({
     const draft = ref('');
     const settingsOpen = ref(false);
     const settings = reactive({ baseURL: '', token: '', theme: 'light' });
+    // 服务端配置查看（GET /api/v1/config，脱敏只读；修改走配置文件 + 重启/热更新）
+    const serverCfg = ref(null);
+    const serverCfgLoading = ref(false);
+    const serverCfgError = ref('');
+    const serverCfgOpen = ref([]);
     const lastUsage = ref(null);
     const msgBox = ref(null);
     const inputBox = ref(null);
@@ -158,6 +163,22 @@ const app = createApp({
     function toggleTheme() {
       settings.theme = settings.theme === 'dark' ? 'light' : 'dark';
       saveSettings();
+    }
+    async function loadServerConfig() {
+      serverCfgLoading.value = true;
+      serverCfgError.value = '';
+      try {
+        serverCfg.value = await api('/api/v1/config');
+        serverCfgOpen.value = serverCfg.value ? Object.keys(serverCfg.value).slice(0, 1) : [];
+      } catch (e) {
+        serverCfg.value = null;
+        serverCfgError.value = e.message || '加载失败';
+      } finally {
+        serverCfgLoading.value = false;
+      }
+    }
+    function prettyCfg(v) {
+      try { return JSON.stringify(v, null, 2); } catch (e) { return String(v); }
     }
     function applyTheme() {
       document.documentElement.classList.toggle('dark', settings.theme === 'dark');
@@ -705,6 +726,7 @@ const app = createApp({
       onAgentChange, newChat, selectSession, sessionCmd, sessionTitle,
       send, stopGenerate, onKeydown, onScroll, quickSend,
       saveSettings, saveAndReconnect, toggleTheme, confirmDialog,
+      serverCfg, serverCfgLoading, serverCfgError, serverCfgOpen, loadServerConfig, prettyCfg,
       prettyJSON, statusLabel, mdOfGroup, reasoningText, sessionStateLabel,
     };
   },
