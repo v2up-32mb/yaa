@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"time"
@@ -148,6 +149,15 @@ func applyProviderElementDefaults(raw map[string]any) error {
 			}
 			setIfMissing(model, "thinking_efforts", []any{})
 			setIfMissing(model, "min_thinking_budget", 0)
+			// 思考预算留空（0/缺失）且开启思考时，继承 max_output：
+			// 思考过程同样消耗输出 token，不填即按最大输出给足。
+			if thinking, _ := model["supports_thinking"].(bool); thinking {
+				if rawNumber(model["min_thinking_budget"]) == 0 {
+					if maxOut := rawNumber(model["max_output"]); maxOut > 0 {
+						model["min_thinking_budget"] = maxOut
+					}
+				}
+			}
 			if _, _, err := optionalSlice(model, "thinking_efforts", modelPath+".thinking_efforts"); err != nil {
 				return err
 			}
@@ -375,6 +385,39 @@ func elementObject(value any, path string) (map[string]any, error) {
 
 func shapeError(path, want string, got any) error {
 	return fmt.Errorf("config: %s: expected %s, got %T", path, want, got)
+}
+
+// rawNumber 把 raw 标量转成整数（int/float64/json.Number 兼容，非法返回 0）。
+func rawNumber(v any) int {
+	switch n := v.(type) {
+	case int:
+		return n
+	case int8:
+		return int(n)
+	case int16:
+		return int(n)
+	case int32:
+		return int(n)
+	case int64:
+		return int(n)
+	case uint:
+		return int(n)
+	case uint32:
+		return int(n)
+	case uint64:
+		return int(n)
+	case float32:
+		return int(n)
+	case float64:
+		return int(n)
+	case json.Number:
+		if i, err := n.Int64(); err == nil {
+			return int(i)
+		}
+		return 0
+	default:
+		return 0
+	}
 }
 
 func setIfMissing(object map[string]any, key string, value any) {

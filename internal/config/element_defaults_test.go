@@ -264,3 +264,46 @@ func assertEqual(t *testing.T, got, want any, path string) {
 		t.Errorf("%s = %#v, want %#v", path, got, want)
 	}
 }
+
+// TestApplyElementDefaultsThinkingBudgetInheritsMaxOutput 思考预算留空
+// （0/缺失）且开启思考时继承 max_output；显式值不覆盖；未开思考不继承。
+func TestApplyElementDefaultsThinkingBudgetInheritsMaxOutput(t *testing.T) {
+	mkRaw := func(model map[string]any) map[string]any {
+		return map[string]any{
+			"providers": []any{map[string]any{
+				"id": "p1", "type": "openai", "models": []any{model},
+			}},
+		}
+	}
+	cases := []struct {
+		name  string
+		model map[string]any
+		want  int
+	}{
+		{
+			name:  "missing budget inherits",
+			model: map[string]any{"id": "m1", "context_window": 64000, "max_output": 8192, "supports_thinking": true},
+			want:  8192,
+		},
+		{
+			name:  "explicit budget kept",
+			model: map[string]any{"id": "m1", "context_window": 64000, "max_output": 8192, "supports_thinking": true, "min_thinking_budget": 500},
+			want:  500,
+		},
+		{
+			name:  "thinking disabled keeps zero",
+			model: map[string]any{"id": "m1", "context_window": 64000, "max_output": 8192},
+			want:  0,
+		},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			raw := mkRaw(tt.model)
+			if err := ApplyElementDefaults(raw); err != nil {
+				t.Fatal(err)
+			}
+			got := raw["providers"].([]any)[0].(map[string]any)["models"].([]any)[0].(map[string]any)["min_thinking_budget"]
+			assertEqual(t, got, tt.want, "min_thinking_budget")
+		})
+	}
+}

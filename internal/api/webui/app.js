@@ -28,7 +28,7 @@ const app = createApp({
     const messages = ref([]);
     const draft = ref('');
     const settingsOpen = ref(false);
-    const settings = reactive({ baseURL: '', token: '', theme: 'light' });
+    const settings = reactive({ baseURL: '', token: '', theme: 'light', maskMode: 'both', maskN: 3 });
     // 服务端配置查看（GET /api/v1/config，脱敏只读；修改走配置文件 + 重启/热更新）
     const serverCfg = ref(null);
     const serverCfgLoading = ref(false);
@@ -181,6 +181,8 @@ const app = createApp({
         settings.baseURL = st.baseURL || '';
         settings.token = st.token || '';
         settings.theme = st.theme || 'light';
+        settings.maskMode = st.maskMode || 'both';
+        settings.maskN = st.maskN || 3;
       } catch (e) { /* ignore */ }
       applyTheme();
     }
@@ -188,6 +190,7 @@ const app = createApp({
       try {
         localStorage.setItem('yaa_ui', JSON.stringify({
           baseURL: settings.baseURL, token: settings.token, theme: settings.theme,
+          maskMode: settings.maskMode, maskN: settings.maskN,
         }));
       } catch (e) { /* ignore */ }
       applyTheme();
@@ -209,8 +212,9 @@ const app = createApp({
     async function loadServerConfig() {
       serverCfgLoading.value = true;
       serverCfgError.value = '';
+      const mask = (settings.maskMode || 'both') + ':' + (Number(settings.maskN) || 3);
       try {
-        serverCfg.value = await api('/api/v1/config');
+        serverCfg.value = await api('/api/v1/config?mask=' + encodeURIComponent(mask));
         serverCfgOpen.value = serverCfg.value ? Object.keys(serverCfg.value).slice(0, 1) : [];
       } catch (e) {
         serverCfg.value = null;
@@ -240,7 +244,7 @@ const app = createApp({
       return {
         id: '', name: '', context_window: 32768, max_output: 8192,
         supports_tools: true, supports_vision: false, supports_streaming: true,
-        supports_thinking: false, thinking_efforts: [], min_thinking_budget: 0,
+        supports_thinking: false, thinking_efforts: [], min_thinking_budget: null,
       };
     }
     const agentFormOpen = ref(false);
@@ -313,7 +317,8 @@ const app = createApp({
         supports_tools: !!m.supports_tools, supports_vision: !!m.supports_vision,
         supports_streaming: m.supports_streaming !== false, supports_thinking: !!m.supports_thinking,
         thinking_efforts: (m.thinking_efforts || []).slice(),
-        min_thinking_budget: m.min_thinking_budget || 0,
+        // 0/缺失一律按空显示：保存时回 0，后端继承 max_output。
+        min_thinking_budget: m.min_thinking_budget || null,
       }));
       if (!provForm.models.length) provForm.models.push(blankProvModel());
       provFormOpen.value = true;

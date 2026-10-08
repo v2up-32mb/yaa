@@ -290,7 +290,7 @@
                       <el-option v-for="e in thinkEffortOptions" :key="e" :label="e" :value="e" />
                     </el-select>
                     <span class="fade">预算</span>
-                    <el-input-number v-model="m.min_thinking_budget" :min="0" style="width:130px" />
+                    <el-input-number v-model="m.min_thinking_budget" :min="0" placeholder="空=继承最大输出" style="width:150px" />
                   </div>
                 </div>
                 <el-button size="small" @click="addProvModel">+ 添加模型</el-button>
@@ -348,7 +348,16 @@
         <el-tab-pane label="服务端配置" name="server">
           <p class="setting-tip">运行时各配置项的脱敏快照（只读）。结构性改动保存后需重启，页面会明确提示。</p>
           <div class="setting-row">
-            <el-button size="small" :loading="serverCfgLoading" @click="loadServerConfig">加载服务端配置</el-button>
+            <div class="row-inline">
+              <span class="fade">密钥显示</span>
+              <el-select v-model="settings.maskMode" size="small" style="width:130px" @change="saveSettings">
+                <el-option value="both" label="前后几位" />
+                <el-option value="prefix" label="前几位" />
+                <el-option value="suffix" label="后几位" />
+              </el-select>
+              <el-input-number v-model="settings.maskN" :min="1" :max="16" size="small" @change="saveSettings" />
+              <el-button size="small" :loading="serverCfgLoading" @click="loadServerConfig">加载服务端配置</el-button>
+            </div>
           </div>
           <div v-if="serverCfgError" class="setting-error">{{ serverCfgError }}</div>
           <el-collapse v-if="serverCfg" v-model="serverCfgOpen" class="cfg-collapse">
