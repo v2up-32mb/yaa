@@ -9,9 +9,11 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// webuiFS 内嵌默认 WebUI 静态资源 (element-plus CDN, 无本地构建).
+// webuiFS 内嵌默认 WebUI 静态资源 (本地 vendor, 无 CDN 依赖, 无本地构建).
+// 注意：必须内嵌整个目录（webui）而非 webui/*，后者的 * 不匹配子目录，
+// 会导致 webui/vendor/* 缺失、页面空白（vendor 全 404）。
 //
-//go:embed webui/*
+//go:embed webui
 var webuiFS embed.FS
 
 // registerWebUI 把默认 WebUI 挂到根路径, 作为用户入口.
