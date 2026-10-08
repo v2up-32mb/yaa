@@ -187,9 +187,6 @@ func (m *ReloadManager) Update(raw map[string]any) (ReloadResult, error) {
 	if err != nil {
 		return ReloadResult{}, fmt.Errorf("%w: %v", ErrConfigHotReloadFailed, err)
 	}
-	if err := validateSensitiveSources(migrated); err != nil {
-		return ReloadResult{}, fmt.Errorf("%w: %v", ErrConfigHotReloadFailed, err)
-	}
 	// 与 Load 一致：落盘保留 ${} 引用不展开；快照侧展开后解码。
 	expanded := deepCopyMap(migrated)
 	if err := NewEnvResolver().ResolveMap(expanded); err != nil {

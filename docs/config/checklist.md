@@ -23,7 +23,7 @@
 - [x] `${VAR_NAME}` 语法解析（配置文件值中的占位符）
 - [x] `${VAR_NAME:-default}` 默认值语法支持
 - [x] 环境变量缺失且无 `:-default` 时统一返回 `ErrConfigEnvVarMissing`
-- [x] 敏感字段强制环境变量来源（API Key、Token 等不在配置文件中明文存储）
+- [x] 敏感字段来源放开（API Key、Token 等允许明文存储；配置文件权限 0600，API/日志侧脱敏显示；`${}` 引用仍会被展开）
 - [x] 环境变量展开在配置文件解析后、校验前执行
 - [x] 展开结果类型转换（字符串 → int / bool / duration）
 

@@ -231,7 +231,18 @@ const app = createApp({
     const cfgSaveResult = ref(null); // {applied, restart_required, paths, error}
     const provFormOpen = ref(false);
     const provEditingId = ref('');
-    const provForm = reactive({ id: '', type: 'openai', base_url: '', api_key: '', timeout: '60s', modelsText: '' });
+    const provForm = reactive({
+      id: '', type: 'openai', base_url: '', api_key: '', timeout: '60s',
+      max_retries: 2, retry_interval: '2s', extraText: '', models: [],
+    });
+    const thinkEffortOptions = ['low', 'medium', 'high', 'max'];
+    function blankProvModel() {
+      return {
+        id: '', name: '', context_window: 32768, max_output: 8192,
+        supports_tools: true, supports_vision: false, supports_streaming: true,
+        supports_thinking: false, thinking_efforts: [], min_thinking_budget: 0,
+      };
+    }
     const agentFormOpen = ref(false);
     const agentEditingId = ref('');
     const agentForm = reactive({ id: '', name: '', provider: '', model: '', max_tokens: 4096, temperature: '', system_prompt: '' });
@@ -291,41 +302,71 @@ const app = createApp({
       provForm.base_url = (p && p.base_url) || '';
       provForm.api_key = '';
       provForm.timeout = (p && p.timeout) || '60s';
-      const models = (p && p.models) || [];
-      provForm.modelsText = models.map(m => [m.id, m.context_window || '', m.max_output || ''].join(',')).join('\n');
+      provForm.max_retries = (p && p.max_retries !== undefined && p.max_retries !== null) ? p.max_retries : 2;
+      provForm.retry_interval = (p && p.retry_interval) || '2s';
+      try {
+        provForm.extraText = (p && p.extra && Object.keys(p.extra).length) ? JSON.stringify(p.extra, null, 2) : '';
+      } catch (e) { provForm.extraText = ''; }
+      provForm.models = ((p && p.models) || []).map(m => ({
+        id: m.id || '', name: m.name || '',
+        context_window: m.context_window || 0, max_output: m.max_output || 0,
+        supports_tools: !!m.supports_tools, supports_vision: !!m.supports_vision,
+        supports_streaming: m.supports_streaming !== false, supports_thinking: !!m.supports_thinking,
+        thinking_efforts: (m.thinking_efforts || []).slice(),
+        min_thinking_budget: m.min_thinking_budget || 0,
+      }));
+      if (!provForm.models.length) provForm.models.push(blankProvModel());
       provFormOpen.value = true;
     }
-    function parseProvModels() {
-      const out = [];
-      for (const line of (provForm.modelsText || '').split('\n')) {
-        const t = line.trim();
-        if (!t) continue;
-        const parts = t.split(',').map(s => s.trim());
-        const m = { id: parts[0] };
-        if (parts[1]) m.context_window = Number(parts[1]);
-        if (parts[2]) m.max_output = Number(parts[2]);
-        out.push(m);
-      }
-      return out;
+    function addProvModel() { provForm.models.push(blankProvModel()); }
+    function delProvModel(i) { provForm.models.splice(i, 1); }
+    function parseProvExtra() {
+      const t = (provForm.extraText || '').trim();
+      if (!t) return { ok: true, value: undefined };
+      try {
+        const v = JSON.parse(t);
+        if (!v || typeof v !== 'object' || Array.isArray(v)) return { ok: false };
+        return { ok: true, value: v };
+      } catch (e) { return { ok: false }; }
     }
     async function saveProvider() {
       if (!provForm.id.trim()) { notify('请填写提供商 ID', 'warning'); return; }
       if (!provEditingId.value && cfgProviders.value.find(p => p.id === provForm.id.trim())) {
         notify('ID 已存在', 'warning'); return;
       }
+      const models = [];
+      for (const m of provForm.models) {
+        if (!m.id.trim()) { notify('模型 ID 不能为空', 'warning'); return; }
+        const e = {
+          id: m.id.trim(), name: (m.name || '').trim(),
+          context_window: Number(m.context_window) || 0, max_output: Number(m.max_output) || 0,
+          supports_tools: !!m.supports_tools, supports_vision: !!m.supports_vision,
+          supports_streaming: !!m.supports_streaming, supports_thinking: !!m.supports_thinking,
+          thinking_efforts: (m.thinking_efforts || []).slice(),
+          min_thinking_budget: Number(m.min_thinking_budget) || 0,
+        };
+        if (!e.supports_thinking) { e.thinking_efforts = []; e.min_thinking_budget = 0; }
+        models.push(e);
+      }
+      if (!models.length) { notify('至少添加一个模型', 'warning'); return; }
+      const extra = parseProvExtra();
+      if (!extra.ok) { notify('附加请求体必须是 JSON 对象', 'warning'); return; }
       const doc = cloneDoc();
       const entry = {
         id: provForm.id.trim(), type: provForm.type, base_url: provForm.base_url.trim(),
-        timeout: provForm.timeout.trim() || '60s',
-        max_retries: 2, retry_interval: '2s',
-        models: parseProvModels(),
+        timeout: (provForm.timeout || '').trim() || '60s',
+        max_retries: Number(provForm.max_retries),
+        retry_interval: (provForm.retry_interval || '').trim() || '2s',
+        models: models,
       };
-      // api_key：空=保持（*** 占位由后端合并）；新建非 ollama 提供商必须填 ${VAR} 引用。
-      if (!provEditingId.value && !provForm.api_key && provForm.type !== 'ollama') {
-        notify('新建该类型提供商请填写 api_key（用 ${ENV} 引用，禁止明文）', 'warning');
-        return;
+      if (extra.value !== undefined) entry.extra = extra.value;
+      // api_key：空=保持不变（*** 占位由后端合并）；新建时空=不设置。
+      // 明文与 ${ENV} 引用都允许（openai 等类型要求非空，后端校验兜底）。
+      if (provForm.api_key) {
+        entry.api_key = provForm.api_key;
+      } else if (provEditingId.value) {
+        entry.api_key = '***';
       }
-      entry.api_key = provForm.api_key ? provForm.api_key : '***';
       doc.providers = doc.providers || [];
       if (provEditingId.value) {
         const i = doc.providers.findIndex(p => p.id === provEditingId.value);
@@ -956,6 +997,7 @@ const app = createApp({
       cfgTab, cfgSaving, cfgSaveResult, ensureServerCfg, putConfigDoc,
       cfgProviders, cfgAgents, cfgLogLevel, saveLogLevel,
       provFormOpen, provEditingId, provForm, openProvForm, saveProvider, deleteProvider,
+      thinkEffortOptions, addProvModel, delProvModel,
       agentFormOpen, agentEditingId, agentForm, openAgentForm, saveAgent, deleteAgent, agentModelsFor,
       prettyJSON, statusLabel, mdOfGroup, reasoningText, sessionStateLabel,
     };

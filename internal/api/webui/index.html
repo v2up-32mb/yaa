@@ -238,7 +238,7 @@
               </template>
             </el-table-column>
           </el-table>
-          <el-dialog v-model="provFormOpen" :title="provEditingId ? '编辑提供商' : '新增提供商'" width="520px" append-to-body>
+          <el-dialog v-model="provFormOpen" :title="provEditingId ? '编辑提供商' : '新增提供商'" width="720px" append-to-body>
             <el-form :model="provForm" label-width="90px" size="small">
               <el-form-item label="ID"><el-input v-model="provForm.id" :disabled="!!provEditingId" placeholder="如 my-gateway" /></el-form-item>
               <el-form-item label="类型">
@@ -251,11 +251,49 @@
               </el-form-item>
               <el-form-item label="地址"><el-input v-model="provForm.base_url" placeholder="http://127.0.0.1:11434" /></el-form-item>
               <el-form-item label="密钥">
-                <el-input v-model="provForm.api_key" type="password" show-password :placeholder="provEditingId ? '*** = 保持不变' : '${ENV} 引用（ollama 可空）'" />
+                <el-input v-model="provForm.api_key" type="password" show-password :placeholder="provEditingId ? '留空 = 保持不变' : '可直接填明文，也可用 ${ENV} 引用（ollama 可空）'" />
               </el-form-item>
-              <el-form-item label="超时"><el-input v-model="provForm.timeout" placeholder="60s" /></el-form-item>
+              <el-form-item label="超时">
+                <div class="row-inline">
+                  <el-input v-model="provForm.timeout" placeholder="60s" style="width:110px" />
+                  <span class="fade">重试</span>
+                  <el-input-number v-model="provForm.max_retries" :min="0" :max="10" />
+                  <span class="fade">间隔</span>
+                  <el-input v-model="provForm.retry_interval" placeholder="2s" style="width:110px" />
+                </div>
+              </el-form-item>
+              <el-form-item label="附加请求体">
+                <el-input v-model="provForm.extraText" type="textarea" :rows="2" placeholder='可选 JSON 对象，合并进上游请求。如：{"key": "value"}' />
+              </el-form-item>
               <el-form-item label="模型">
-                <el-input v-model="provForm.modelsText" type="textarea" :rows="3" placeholder="每行：模型ID, 上下文窗口, 最大输出&#10;如：qwen2.5:7b, 32768, 8192" />
+                <div v-for="(m, i) in provForm.models" :key="i" class="model-card">
+                  <div class="row-inline model-card-head">
+                    <el-input v-model="m.id" placeholder="模型 ID" style="width:180px" />
+                    <el-input v-model="m.name" placeholder="显示名（可选）" style="width:150px" />
+                    <el-button size="small" text type="danger" @click="delProvModel(i)" :disabled="provForm.models.length <= 1">删除</el-button>
+                  </div>
+                  <div class="row-inline">
+                    <span class="fade">上下文</span>
+                    <el-input-number v-model="m.context_window" :min="0" style="width:130px" />
+                    <span class="fade">最大输出</span>
+                    <el-input-number v-model="m.max_output" :min="0" style="width:130px" />
+                  </div>
+                  <div class="row-inline">
+                    <el-checkbox v-model="m.supports_tools">工具</el-checkbox>
+                    <el-checkbox v-model="m.supports_vision">视觉</el-checkbox>
+                    <el-checkbox v-model="m.supports_streaming">流式</el-checkbox>
+                    <el-checkbox v-model="m.supports_thinking">思考</el-checkbox>
+                  </div>
+                  <div class="row-inline" v-if="m.supports_thinking">
+                    <span class="fade">思考等级</span>
+                    <el-select v-model="m.thinking_efforts" multiple placeholder="可选" style="width:220px">
+                      <el-option v-for="e in thinkEffortOptions" :key="e" :label="e" :value="e" />
+                    </el-select>
+                    <span class="fade">预算</span>
+                    <el-input-number v-model="m.min_thinking_budget" :min="0" style="width:130px" />
+                  </div>
+                </div>
+                <el-button size="small" @click="addProvModel">+ 添加模型</el-button>
               </el-form-item>
             </el-form>
             <template #footer>

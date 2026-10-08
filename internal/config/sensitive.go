@@ -3,58 +3,16 @@ package config
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 )
 
-// ErrConfigSensitivePlain 验证敏感字段未使用 ${VAR} 注入.
+// ErrConfigSensitivePlain 保留作兼容：历史版本要求敏感字段必须使用 ${VAR}
+// 环境变量引用；现已放开允许明文（配置文件权限 0600，脱敏显示保留），
+// 该错误不再产生。
 var ErrConfigSensitivePlain = errors.New("config: sensitive field must use ${VAR} environment reference")
 
-// validateSensitiveSources 在 envvar 展开前校验 raw map: 敏感字段值必须为空或 ${...} 引用.
-// docs config checklist 行16: 敏感字段不在配置文件中明文存储.
-func validateSensitiveSources(raw map[string]any) error {
-	var errs []error
-	// providers[].api_key
-	if providers, ok := raw["providers"].([]any); ok {
-		for i, p := range providers {
-			if pm, ok := p.(map[string]any); ok {
-				if v, ok := pm["api_key"].(string); ok && v != "" && !isEnvRef(v) {
-					errs = append(errs, fmt.Errorf("%w: providers[%d].api_key", ErrConfigSensitivePlain, i))
-				}
-			}
-		}
-	}
-	// runtime.auth.{jwt.secret, tokens[].token}
-	if rt, ok := raw["runtime"].(map[string]any); ok {
-		if auth, ok := rt["auth"].(map[string]any); ok {
-			if jwt, ok := auth["jwt"].(map[string]any); ok {
-				if v, ok := jwt["secret"].(string); ok && v != "" && !isEnvRef(v) {
-					errs = append(errs, fmt.Errorf("%w: runtime.auth.jwt.secret", ErrConfigSensitivePlain))
-				}
-			}
-			if tokens, ok := auth["tokens"].([]any); ok {
-				for i, tk := range tokens {
-					if tm, ok := tk.(map[string]any); ok {
-						if v, ok := tm["token"].(string); ok && v != "" && !isEnvRef(v) {
-							errs = append(errs, fmt.Errorf("%w: runtime.auth.tokens[%d].token", ErrConfigSensitivePlain, i))
-						}
-					}
-				}
-			}
-		}
-	}
-	// memory.embedding.api_key
-	if mem, ok := raw["memory"].(map[string]any); ok {
-		if emb, ok := mem["embedding"].(map[string]any); ok {
-			if v, ok := emb["api_key"].(string); ok && v != "" && !isEnvRef(v) {
-				errs = append(errs, fmt.Errorf("%w: memory.embedding.api_key", ErrConfigSensitivePlain))
-			}
-		}
-	}
-	return errors.Join(errs...)
-}
-
-// isEnvRef 判断 s 是否完全匹配 ${VAR_NAME} 或 ${VAR_NAME:-default}.
+// isEnvRef 判断 s 是否完全匹配 ${VAR_NAME} 或 ${VAR_NAME:-default}。
+// 明文放开后仅作形状判断辅助（环境变量展开本身支持 ${} 语法）。
 func isEnvRef(s string) bool {
 	if !strings.HasPrefix(s, "${") || !strings.HasSuffix(s, "}") {
 		return false

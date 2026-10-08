@@ -44,10 +44,6 @@ func (l *Loader) Load() (*Config, error) {
 		if err != nil {
 			return nil, fmt.Errorf("migrate config: %w", err)
 		}
-		// Step 4.5: 敏感字段强制环境变量来源 (docs/config checklist 行16, 在展开前校验)
-		if err := validateSensitiveSources(raw); err != nil {
-			return nil, fmt.Errorf("sensitive source: %w", err)
-		}
 		// Step 5: 环境变量展开
 		if err := NewEnvResolver().ResolveMap(raw); err != nil {
 			return nil, fmt.Errorf("expand environment: %w", err)

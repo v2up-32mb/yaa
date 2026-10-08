@@ -282,6 +282,10 @@ code { font-family: Consolas, "Courier New", monospace; }
 .model-tag.warn { color: var(--warn); }
 .row-inline { display: flex; align-items: center; gap: 10px; }
 .cfg-table { width: 100%; margin-bottom: 8px; }
+.model-card { border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; }
+.model-card .row-inline { margin-bottom: 6px; }
+.model-card .row-inline:last-child { margin-bottom: 0; }
+.fade { font-size: 11px; color: var(--text-faint); }
 
 /* 滚动条 */
 ::-webkit-scrollbar { width: 8px; height: 8px; }

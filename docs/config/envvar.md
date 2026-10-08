@@ -65,7 +65,7 @@ providers:
   - id: openai
     type: openai
     api_key: "${OPENAI_API_KEY}"
-    # 敏感信息必须通过环境变量注入，无默认值
+    # 敏感信息推荐用环境变量注入（也可直接写明文；配置文件权限 0600）
     base_url: "${OPENAI_BASE_URL:-https://api.openai.com/v1}"
     # 可选覆盖，默认指向官方 API
   - id: anthropic
@@ -212,7 +212,7 @@ func (r *EnvResolver) resolveValue(v any) (any, error) {
 | 事项 | 说明 |
 |------|------|
 | **不记录敏感值** | 展开日志只记录变量名和长度，不记录实际值 |
-| **配置文件不入库** | 配置文件不应包含 `${OPENAI_API_KEY}` 以外的密钥明文 |
+| **密钥可选明文** | 密钥可直接写明文，也可用 `${OPENAI_API_KEY}` 引用由环境注入；配置文件权限 0600，API/日志侧始终脱敏显示 |
 | **环境变量管理** | 生产环境通过服务管理器或密钥管理服务注入；Runtime 不自动读取 `.env` 文件 |
 | **展开时机** | 在配置校验前展开，校验器看到的是最终值 |
 
