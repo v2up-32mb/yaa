@@ -70,11 +70,16 @@ func run(configPath string) error {
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
-	// 解析实际生效的配置文件路径，供 Runtime 解析相对 skills.dir 等字段。
-	// Load 内部已创建工作目录；此处仅透传路径（未找到配置文件时为空）。
+	// 解析实际生效的配置文件路径，供 Runtime 解析相对 skills.dir 等字段
+	//（未找到配置文件时为空，即纯默认配置启动）。
 	resolvedPath, err := config.ResolveConfigPath(configPath)
 	if err != nil {
 		return fmt.Errorf("resolve config path: %w", err)
+	}
+	// 首次运行创建工作目录及各功能子目录（校验通过后才落盘；文件型
+	// log 输出的父目录也在此建好，保证紧随的日志初始化可写文件）。
+	if err := config.EnsureWorkDirs(cfg, resolvedPath); err != nil {
+		return fmt.Errorf("ensure work dirs: %w", err)
 	}
 
 	logger, logCloser, err := logging.SetDefault(cfg.Log)

@@ -79,15 +79,11 @@ func (l *Loader) Load() (*Config, error) {
 		return nil, fmt.Errorf("validate config: %w", err)
 	}
 
-	// Step 10: 首次运行创建工作目录及各功能子目录（data/skills/plugins 等）。
-	// 校验通过后才落盘建目录，避免非法配置污染文件系统。
-	if err := EnsureWorkDirs(cfg, path); err != nil {
-		if path != "" {
-			return nil, fmt.Errorf("ensure work dirs (config %s): %w", path, err)
-		}
-		return nil, fmt.Errorf("ensure work dirs: %w", err)
-	}
-
+	// 注意：Load 只读不写，不创建工作目录。建目录是启动链路的显式步骤
+	// （main.run / Runtime.Start 调 EnsureWorkDirs），原因：
+	// Reload() 用 Load 校验候选配置，候选仅做 diff/分类，不得有落盘副作用，
+	// 且 restart-required 候选（如 skills.dir 指向无权限路径）必须返回
+	// RestartRequired 而非建目录错误。
 	return cfg, nil
 }
 

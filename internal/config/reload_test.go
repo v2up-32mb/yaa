@@ -473,8 +473,14 @@ func TestReloadPluginsAnyFieldIsRestartRequired(t *testing.T) {
 // docs/skill/config.md §72: skills.dir, per_skill, agents[].skills, agents[].skills_config 全 restart-required.
 func TestReloadSkillsDirIsRestartRequired(t *testing.T) {
 	m, p := newTestReloadManager(t, nil)
-	// 改 skills.dir: 默认工作目录/skills → "/usr/local/yaa/skills"
-	newContent := minimalValidYAML + "skills:\n  dir: /usr/local/yaa/skills\n"
+	// 候选 skills.dir 指向不可创建的路径（普通文件下的子目录，连 root 也
+	// 建不出来）：Reload 只做 diff/分类，不得尝试建目录，必须返回
+	// RestartRequired 而非建目录错误（Load 保持纯读，建目录是启动链路职责）。
+	blocker := filepath.Join(t.TempDir(), "not-a-dir")
+	if err := os.WriteFile(blocker, []byte("file not dir"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	newContent := minimalValidYAML + "skills:\n  dir: " + blocker + "/skills\n"
 	if err := os.WriteFile(p, []byte(newContent), 0o600); err != nil {
 		t.Fatal(err)
 	}
