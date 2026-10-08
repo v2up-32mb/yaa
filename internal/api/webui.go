@@ -4,7 +4,6 @@ import (
 	"embed"
 	"io/fs"
 	"net/http"
-	"path/filepath"
 
 	"github.com/gorilla/mux"
 )
@@ -55,7 +54,9 @@ func registerWebUI(r *mux.Router) {
 			http.NotFound(w, req)
 			return
 		}
-		data, err := fs.ReadFile(sub, filepath.Join("vendor", name))
+		// embed FS 路径分隔符必须是正斜杠：严禁用 filepath.Join（Windows 下
+		// 会拼出反斜杠导致全部 404，只能用正斜杠拼接；name 已白名单校验。
+		data, err := fs.ReadFile(sub, "vendor/"+name)
 		if err != nil {
 			http.NotFound(w, req)
 			return
