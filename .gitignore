@@ -33,6 +33,8 @@ Thumbs.db
 
 # Go
 vendor/
+# 例外：WebUI 内嵌静态资源（embed 打进二进制，非 Go 依赖 vendor）
+!/internal/api/webui/vendor/
 go.work
 go.work.sum
 
