@@ -15,13 +15,14 @@ var expectedRoutes = []routeSpec{
 	{Method: http.MethodGet, Pattern: "/api/v1/health", Action: "read", Resource: "system", Transport: TransportHTTP},
 	{Method: http.MethodGet, Pattern: "/api/v1/version", Action: "read", Resource: "system", Transport: TransportHTTP},
 	{Method: http.MethodGet, Pattern: "/api/v1/config", Action: "read", Resource: "config", Transport: TransportHTTP},
+	{Method: http.MethodPut, Pattern: "/api/v1/config", Action: "write", Resource: "config", Transport: TransportHTTP},
 	// 3.2 Agent（5）
 	{Method: http.MethodGet, Pattern: "/api/v1/agents", Action: "read", Resource: "agents", Transport: TransportHTTP},
 	{Method: http.MethodGet, Pattern: "/api/v1/agents/{id}", Action: "read", Resource: "agents", Transport: TransportHTTP},
 	{Method: http.MethodPost, Pattern: "/api/v1/agents/{id}/start", Action: "write", Resource: "agents", Transport: TransportHTTP},
 	{Method: http.MethodPost, Pattern: "/api/v1/agents/{id}/pause", Action: "write", Resource: "agents", Transport: TransportHTTP},
 	{Method: http.MethodPost, Pattern: "/api/v1/agents/{id}/stop", Action: "write", Resource: "agents", Transport: TransportHTTP},
-	// 3.3 Session（10）
+	// 3.3 Session（11）
 	{Method: http.MethodPost, Pattern: "/api/v1/agents/{id}/sessions", Action: "write", Resource: "sessions", Transport: TransportHTTP},
 	{Method: http.MethodGet, Pattern: "/api/v1/agents/{id}/sessions", Action: "read", Resource: "sessions", Transport: TransportHTTP},
 	{Method: http.MethodGet, Pattern: "/api/v1/sessions/{id}", Action: "read", Resource: "sessions", Transport: TransportHTTP},
@@ -30,6 +31,7 @@ var expectedRoutes = []routeSpec{
 	{Method: http.MethodPost, Pattern: "/api/v1/sessions/{id}/close", Action: "write", Resource: "sessions", Transport: TransportHTTP},
 	{Method: http.MethodDelete, Pattern: "/api/v1/sessions/{id}", Action: "delete", Resource: "sessions", Transport: TransportHTTP},
 	{Method: http.MethodPost, Pattern: "/api/v1/sessions/{id}/clear", Action: "write", Resource: "sessions", Transport: TransportHTTP},
+	{Method: http.MethodPost, Pattern: "/api/v1/sessions/{id}/model", Action: "write", Resource: "sessions", Transport: TransportHTTP},
 	{Method: http.MethodGet, Pattern: "/api/v1/sessions/{id}/messages", Action: "read", Resource: "sessions", Transport: TransportHTTP},
 	{Method: http.MethodDelete, Pattern: "/api/v1/sessions/{id}/messages/{msgid}", Action: "delete", Resource: "sessions", Transport: TransportHTTP},
 	// 3.4 对话（3）
@@ -74,7 +76,7 @@ func TestRouteRegistrationMatchIndexTable(t *testing.T) {
 	got := sortSpecs(s.RegisteredRoutes())
 	want := sortSpecs(expectedRoutes)
 	if len(got) != len(want) {
-		t.Fatalf("route count = %d, want %d (INDEX.md §3 = 37)", len(got), len(want))
+		t.Fatalf("route count = %d, want %d (INDEX.md §3 = 39)", len(got), len(want))
 	}
 	for i := range want {
 		if got[i] != want[i] {
@@ -85,8 +87,8 @@ func TestRouteRegistrationMatchIndexTable(t *testing.T) {
 
 func TestRouteRegistrationCountIs37(t *testing.T) {
 	s := NewServer("127.0.0.1:0", nil, nil)
-	if n := len(s.RegisteredRoutes()); n != 37 {
-		t.Fatalf("registered routes = %d, want exactly 37 (AD-004 / INDEX.md §3)", n)
+	if n := len(s.RegisteredRoutes()); n != 39 {
+		t.Fatalf("registered routes = %d, want exactly 39 (AD-004 / INDEX.md §3)", n)
 	}
 }
 

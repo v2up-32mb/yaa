@@ -171,7 +171,7 @@ func TestValidatorEffectiveOverrides(t *testing.T) {
 		ID: "provider", Type: "custom", Timeout: time.Second, RetryInterval: time.Second,
 	}}
 	cfg.Agents = []AgentConfig{{
-		ID: "agent", Name: "Agent", Provider: "provider", Model: "model", MaxTokens: 1,
+		ID: "agent", Name: "Agent", Provider: "provider", Model: "", MaxTokens: 1,
 		Context: &ContextOverride{Strategy: &strategy},
 		Memory:  &MemoryOverride{MaxItems: &maxItems},
 		Session: &SessionOverride{MaxMessages: &maxMessages},
@@ -223,9 +223,9 @@ func TestValidatorMemoryEmbeddingCondition(t *testing.T) {
 			ID: "provider", Type: "custom", Timeout: time.Second, RetryInterval: time.Second,
 		}}
 		cfg.Agents = []AgentConfig{
-			{ID: "a", Name: "A", Provider: "provider", Model: "model", MaxTokens: 1,
+			{ID: "a", Name: "A", Provider: "provider", Model: "", MaxTokens: 1,
 				Memory: &MemoryOverride{Vector: &MemoryVectorOverride{Enabled: &vectorEnabled}}},
-			{ID: "b", Name: "B", Provider: "provider", Model: "model", MaxTokens: 1,
+			{ID: "b", Name: "B", Provider: "provider", Model: "", MaxTokens: 1,
 				Memory: &MemoryOverride{Vector: &MemoryVectorOverride{Enabled: &vectorEnabled}}},
 		}
 		err := new(Validator).Validate(cfg)
@@ -250,7 +250,7 @@ func TestValidatorMemoryEmbeddingCondition(t *testing.T) {
 			ID: "provider", Type: "custom", Timeout: time.Second, RetryInterval: time.Second,
 		}}
 		cfg.Agents = []AgentConfig{{
-			ID: "agent", Name: "Agent", Provider: "provider", Model: "model", MaxTokens: 1,
+			ID: "agent", Name: "Agent", Provider: "provider", Model: "", MaxTokens: 1,
 			Memory: &MemoryOverride{
 				Enabled: &enabled,
 				Vector:  &MemoryVectorOverride{Enabled: &vectorEnabled},

@@ -103,16 +103,19 @@ func NewManager(deps Dependencies) (*Manager, error) {
 		if perr != nil {
 			return nil, fmt.Errorf("agent %q: provider %q not found: %w", a.ID, a.Provider, perr)
 		}
-		// 验证 Model 存在
-		found := false
-		for _, mi := range p.Models() {
-			if mi.ID == a.Model {
-				found = true
-				break
+		// Model 可空：空即无模型 agent，靠会话级覆盖供给模型（turn 无有效
+		// 模型时明确报错）。非空则必须是该 provider 下已配置的模型。
+		if a.Model != "" {
+			found := false
+			for _, mi := range p.Models() {
+				if mi.ID == a.Model {
+					found = true
+					break
+				}
 			}
-		}
-		if !found {
-			return nil, fmt.Errorf("agent %q: model %q not found in provider %q", a.ID, a.Model, a.Provider)
+			if !found {
+				return nil, fmt.Errorf("agent %q: model %q not found in provider %q", a.ID, a.Model, a.Provider)
+			}
 		}
 		maxTokens := a.MaxTokens
 		if maxTokens <= 0 {

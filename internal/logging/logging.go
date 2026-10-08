@@ -10,9 +10,25 @@ import (
 	"github.com/v2up-32mb/yaa/internal/config"
 )
 
+// dynamicLevel 是进程共享的日志级别：New() 创建的 handler 全部引用它，
+// 在线改配置 log.level 时调 SetLevel 即时生效（无需重建 logger）。
+// 注意多 logger 共存时后创建者覆盖级别（测试串行调用不受影响）。
+var dynamicLevel = new(slog.LevelVar)
+
+// SetLevel 设置进程共享日志级别（在线改配置用）；非法值返回错误且不改动。
+func SetLevel(level string) error {
+	lv, err := parseLevel(level)
+	if err != nil {
+		return err
+	}
+	dynamicLevel.Set(lv)
+	return nil
+}
+
 // New 按 log 配置创建 slog.Logger 并返回一个 closer（文件输出时在退出时调用，stderr/stdout 时为 noop）。
 // level 仅接受 debug/info/warn/error；format 仅 text/json；output 为 stderr/stdout 或文件路径。
 // 校验已由 config.Validator 完成，这里对边界仍做最小防御。
+// handler 级别引用进程共享 dynamicLevel，后续 SetLevel 即时生效。
 func New(cfg config.LogConfig) (*slog.Logger, func() error, error) {
 	level, err := parseLevel(cfg.Level)
 	if err != nil {
@@ -22,7 +38,8 @@ func New(cfg config.LogConfig) (*slog.Logger, func() error, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	opts := slog.HandlerOptions{Level: level}
+	dynamicLevel.Set(level)
+	opts := slog.HandlerOptions{Level: dynamicLevel}
 	var handler slog.Handler
 	if cfg.Format == "json" {
 		handler = opts.NewJSONHandler(w)

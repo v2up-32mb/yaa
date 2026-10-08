@@ -8,6 +8,13 @@ import (
 	"github.com/v2up-32mb/yaa/internal/provider"
 )
 
+// ModelOverride 是会话级的 provider/model 覆盖：turn 解析优先级为
+// 会话覆盖 > Agent 配置。nil 表示无覆盖，走 Agent 配置。
+type ModelOverride struct {
+	Provider string
+	Model    string
+}
+
 // Session 是一次对话的持久状态单元。调用方不得修改返回实例的字段。
 type Session struct {
 	ID             string
@@ -19,6 +26,7 @@ type Session struct {
 	Messages       []SessionMessage
 	Metadata       map[string]any
 	Policy         config.SessionPolicy
+	Model          *ModelOverride
 	SchemaVersion  int
 }
 
@@ -36,6 +44,7 @@ type CreateRequest struct {
 	AgentID  string
 	Policy   *config.SessionOverride
 	Metadata map[string]any
+	Model    *ModelOverride
 }
 
 // AppendInput 只承载 Provider message 和 metadata，Turn ID 由 Turn 自动写入。
@@ -77,6 +86,10 @@ func (s *Session) clone() *Session {
 	if s.Metadata != nil {
 		c.Metadata = cloneAnyMap(s.Metadata)
 	}
+	if s.Model != nil {
+		ov := *s.Model
+		c.Model = &ov
+	}
 	return &c
 }
 
@@ -112,6 +125,9 @@ type snapshotV1 struct {
 	Messages      []snapshotMessage `json:"messages"`
 	Metadata      map[string]any    `json:"metadata"`
 	UsedTurnIDs   []string          `json:"used_turn_ids"`
+	// model_override 为后加可选字段：老快照缺失时解码为 nil（无覆盖），
+	// schema_version 保持 1。
+	Model *ModelOverride `json:"model_override,omitempty"`
 }
 
 type snapshotPolicy struct {

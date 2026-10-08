@@ -39,6 +39,48 @@ const app = createApp({
     const inputBox = ref(null);
     const mdBox = ref(null);
 
+    // 会话级模型："provider/model"，空表示用 Agent 默认模型。
+    const sessionModelKey = ref('');
+    const modelOptions = computed(() => {
+      const out = [];
+      for (const p of providers.value || []) {
+        for (const m of p.models || []) {
+          const mid = (m && typeof m === 'object') ? m.id : m;
+          if (p.id && mid) out.push({ value: p.id + '/' + mid, provider: p.id, model: mid, label: p.id + ' / ' + mid });
+        }
+      }
+      return out;
+    });
+    const effectiveModelLabel = computed(() => {
+      if (sessionModelKey.value) return sessionModelKey.value;
+      if (currentAgent.value && currentAgent.value.model) return currentAgent.value.provider + ' / ' + currentAgent.value.model;
+      return '';
+    });
+    function syncSessionModel(s) {
+      sessionModelKey.value = (s && s.model && s.model.provider && s.model.model)
+        ? s.model.provider + '/' + s.model.model : '';
+    }
+    async function onModelChange(val) {
+      if (!sessionId.value) { sessionModelKey.value = ''; return; }
+      let body = {};
+      if (val) {
+        const i = val.indexOf('/');
+        body = { provider: val.slice(0, i), model: val.slice(i + 1) };
+      }
+      try {
+        const d = await api(`/api/v1/sessions/${encodeURIComponent(sessionId.value)}/model`, {
+          method: 'POST', body: JSON.stringify(body),
+        });
+        const idx = sessions.value.findIndex(x => x.id === sessionId.value);
+        if (idx >= 0) sessions.value[idx].model = d.model || null;
+        syncSessionModel(idx >= 0 ? sessions.value[idx] : null);
+        notify(val ? ('已切换模型：' + val) : '已清除会话模型，改用 Agent 默认', 'success');
+      } catch (e) {
+        notify('切换模型失败：' + e.message, 'error');
+        syncSessionModel(currentSession.value);
+      }
+    }
+
     // 当前 turn 的实时状态
     const live = reactive({ turnId: '', text: '', reasoning: '', tools: [], done: false, error: '' });
     // 已结束但未持久化的提示（取消/错误/部分输出），随消息区渲染
@@ -180,6 +222,182 @@ const app = createApp({
     function prettyCfg(v) {
       try { return JSON.stringify(v, null, 2); } catch (e) { return String(v); }
     }
+    function cloneDoc() {
+      return JSON.parse(JSON.stringify(serverCfg.value || {}));
+    }
+    // ---------- 在线改配置 ----------
+    const cfgTab = ref('conn');
+    const cfgSaving = ref(false);
+    const cfgSaveResult = ref(null); // {applied, restart_required, paths, error}
+    const provFormOpen = ref(false);
+    const provEditingId = ref('');
+    const provForm = reactive({ id: '', type: 'openai', base_url: '', api_key: '', timeout: '60s', modelsText: '' });
+    const agentFormOpen = ref(false);
+    const agentEditingId = ref('');
+    const agentForm = reactive({ id: '', name: '', provider: '', model: '', max_tokens: 4096, temperature: '', system_prompt: '' });
+    const cfgProviders = computed(() => (serverCfg.value && serverCfg.value.providers) || []);
+    const cfgAgents = computed(() => (serverCfg.value && serverCfg.value.agents) || []);
+    const cfgLogLevel = computed({
+      get: () => (serverCfg.value && serverCfg.value.log && serverCfg.value.log.level) || 'info',
+      set: (v) => { if (serverCfg.value) { serverCfg.value.log = serverCfg.value.log || {}; serverCfg.value.log.level = v; } },
+    });
+    async function ensureServerCfg() {
+      if (!serverCfg.value && !serverCfgLoading.value) await loadServerConfig();
+    }
+    // PUT 全量文档：成功后刷新服务端快照 + agents/providers 目录。
+    async function putConfigDoc(doc, okMsg) {
+      cfgSaving.value = true;
+      cfgSaveResult.value = null;
+      try {
+        const r = await api('/api/v1/config', { method: 'PUT', body: JSON.stringify(doc) });
+        cfgSaveResult.value = r;
+        await loadServerConfig();
+        await bootCatalogs();
+        if (r.restart_required) {
+          notify('已写入文件，以下改动需重启生效：' + (r.paths || []).join(', '), 'warning');
+        } else {
+          notify(okMsg || '已生效', 'success');
+        }
+        return true;
+      } catch (e) {
+        cfgSaveResult.value = { error: e.message };
+        notify('保存失败：' + e.message, 'error');
+        return false;
+      } finally {
+        cfgSaving.value = false;
+      }
+    }
+    // 重载 agents/providers 目录并尽量保持当前选择（在线改配置后同步）。
+    async function bootCatalogs() {
+      const keepAgent = agentId.value;
+      const agentsRes = await api('/api/v1/agents?page_size=100').catch(e => ({ error: e }));
+      const providersRes = await api('/api/v1/providers').catch(() => null);
+      if (!(agentsRes && agentsRes.error)) agents.value = (agentsRes && agentsRes.items) || [];
+      if (providersRes) providers.value = providersRes.items || [];
+      if (agents.value.length && !agents.value.find(a => a.id === keepAgent)) {
+        agentId.value = agents.value[0].id;
+        await onAgentChange();
+      } else if (!agents.value.length) {
+        agentId.value = '';
+        sessions.value = [];
+        sessionId.value = '';
+        sessionModelKey.value = '';
+      }
+    }
+    function openProvForm(p) {
+      provEditingId.value = (p && p.id) || '';
+      provForm.id = (p && p.id) || '';
+      provForm.type = (p && p.type) || 'openai';
+      provForm.base_url = (p && p.base_url) || '';
+      provForm.api_key = '';
+      provForm.timeout = (p && p.timeout) || '60s';
+      const models = (p && p.models) || [];
+      provForm.modelsText = models.map(m => [m.id, m.context_window || '', m.max_output || ''].join(',')).join('\n');
+      provFormOpen.value = true;
+    }
+    function parseProvModels() {
+      const out = [];
+      for (const line of (provForm.modelsText || '').split('\n')) {
+        const t = line.trim();
+        if (!t) continue;
+        const parts = t.split(',').map(s => s.trim());
+        const m = { id: parts[0] };
+        if (parts[1]) m.context_window = Number(parts[1]);
+        if (parts[2]) m.max_output = Number(parts[2]);
+        out.push(m);
+      }
+      return out;
+    }
+    async function saveProvider() {
+      if (!provForm.id.trim()) { notify('请填写提供商 ID', 'warning'); return; }
+      if (!provEditingId.value && cfgProviders.value.find(p => p.id === provForm.id.trim())) {
+        notify('ID 已存在', 'warning'); return;
+      }
+      const doc = cloneDoc();
+      const entry = {
+        id: provForm.id.trim(), type: provForm.type, base_url: provForm.base_url.trim(),
+        timeout: provForm.timeout.trim() || '60s',
+        max_retries: 2, retry_interval: '2s',
+        models: parseProvModels(),
+      };
+      // api_key：空=保持（*** 占位由后端合并）；新建非 ollama 提供商必须填 ${VAR} 引用。
+      if (!provEditingId.value && !provForm.api_key && provForm.type !== 'ollama') {
+        notify('新建该类型提供商请填写 api_key（用 ${ENV} 引用，禁止明文）', 'warning');
+        return;
+      }
+      entry.api_key = provForm.api_key ? provForm.api_key : '***';
+      doc.providers = doc.providers || [];
+      if (provEditingId.value) {
+        const i = doc.providers.findIndex(p => p.id === provEditingId.value);
+        if (i >= 0) {
+          // 编辑：保留表单未覆盖的老字段（extra 等）。
+          doc.providers[i] = Object.assign({}, doc.providers[i], entry);
+        }
+      } else {
+        doc.providers.push(entry);
+      }
+      if (await putConfigDoc(doc, '提供商已保存')) provFormOpen.value = false;
+    }
+    async function deleteProvider(p) {
+      const ok = await confirmDialog(`确定删除提供商「${p.id}」？引用它的 Agent 会校验失败。`, '删除提供商');
+      if (!ok) return;
+      const doc = cloneDoc();
+      doc.providers = (doc.providers || []).filter(x => x.id !== p.id);
+      await putConfigDoc(doc, '提供商已删除');
+    }
+    function openAgentForm(a) {
+      agentEditingId.value = (a && a.id) || '';
+      agentForm.id = (a && a.id) || '';
+      agentForm.name = (a && a.name) || '';
+      agentForm.provider = (a && a.provider) || ((cfgProviders.value[0] && cfgProviders.value[0].id) || '');
+      agentForm.model = (a && a.model) || '';
+      agentForm.max_tokens = (a && a.max_tokens) || 4096;
+      agentForm.temperature = (a && a.temperature !== undefined && a.temperature !== null) ? String(a.temperature) : '';
+      agentForm.system_prompt = (a && a.system_prompt) || '';
+      agentFormOpen.value = true;
+    }
+    function agentModelsFor(providerId) {
+      const p = cfgProviders.value.find(x => x.id === providerId);
+      return ((p && p.models) || []).map(m => m.id);
+    }
+    async function saveAgent() {
+      if (!agentForm.id.trim()) { notify('请填写 Agent ID', 'warning'); return; }
+      if (!agentForm.name.trim()) { notify('请填写名称', 'warning'); return; }
+      if (!agentForm.provider) { notify('请选择提供商', 'warning'); return; }
+      if (!agentEditingId.value && cfgAgents.value.find(a => a.id === agentForm.id.trim())) {
+        notify('ID 已存在', 'warning'); return;
+      }
+      const doc = cloneDoc();
+      const entry = {
+        id: agentForm.id.trim(), name: agentForm.name.trim(),
+        provider: agentForm.provider, model: agentForm.model.trim(),
+        system_prompt: agentForm.system_prompt,
+        tools: [], skills: [],
+        max_tokens: Number(agentForm.max_tokens) || 4096,
+      };
+      if (agentForm.temperature !== '') entry.temperature = Number(agentForm.temperature);
+      doc.agents = doc.agents || [];
+      if (agentEditingId.value) {
+        const i = doc.agents.findIndex(a => a.id === agentEditingId.value);
+        if (i >= 0) doc.agents[i] = Object.assign({}, doc.agents[i], entry);
+      } else {
+        doc.agents.push(entry);
+      }
+      if (await putConfigDoc(doc, 'Agent 已保存')) agentFormOpen.value = false;
+    }
+    async function deleteAgent(a) {
+      const ok = await confirmDialog(`确定删除 Agent「${a.id}」？其会话历史保留但无法再建新会话。`, '删除 Agent');
+      if (!ok) return;
+      const doc = cloneDoc();
+      doc.agents = (doc.agents || []).filter(x => x.id !== a.id);
+      await putConfigDoc(doc, 'Agent 已删除');
+    }
+    async function saveLogLevel() {
+      const doc = cloneDoc();
+      doc.log = doc.log || {};
+      doc.log.level = cfgLogLevel.value;
+      await putConfigDoc(doc, '日志级别已生效');
+    }
     function applyTheme() {
       document.documentElement.classList.toggle('dark', settings.theme === 'dark');
     }
@@ -227,6 +445,7 @@ const app = createApp({
       closeSSE();
       currentTurnAbort && currentTurnAbort.abort();
       sessionId.value = '';
+      sessionModelKey.value = '';
       messages.value = [];
       if (!agentId.value) return;
       try {
@@ -260,6 +479,7 @@ const app = createApp({
         });
         await onAgentChange();
         sessionId.value = d.id;
+        syncSessionModel(d);
         await openSession(d.id);
       } catch (e) {
         notify('新建会话失败：' + e.message, 'error');
@@ -273,6 +493,7 @@ const app = createApp({
       if (id === sessionId.value) return;
       if (currentTurnAbort) currentTurnAbort.abort();
       sessionId.value = id;
+      syncSessionModel(sessions.value.find(x => x.id === id) || null);
       await openSession(id);
     }
 
@@ -603,6 +824,10 @@ const app = createApp({
         notify('会话已失效，请重新选择', 'warning');
         return;
       }
+      if (!effectiveModelLabel.value) {
+        notify('请先在顶部选择本会话使用的模型', 'warning');
+        return;
+      }
       if (!draft.value.trim() || streaming.value) return;
       const content = draft.value.trim();
       draft.value = '';
@@ -724,9 +949,14 @@ const app = createApp({
       messages, draft, settingsOpen, settings, lastUsage, msgBox, inputBox, mdBox,
       currentAgent, currentSession, canSend, messageGroups, hints, finalizedLive,
       onAgentChange, newChat, selectSession, sessionCmd, sessionTitle,
+      sessionModelKey, modelOptions, effectiveModelLabel, onModelChange,
       send, stopGenerate, onKeydown, onScroll, quickSend,
       saveSettings, saveAndReconnect, toggleTheme, confirmDialog,
       serverCfg, serverCfgLoading, serverCfgError, serverCfgOpen, loadServerConfig, prettyCfg,
+      cfgTab, cfgSaving, cfgSaveResult, ensureServerCfg, putConfigDoc,
+      cfgProviders, cfgAgents, cfgLogLevel, saveLogLevel,
+      provFormOpen, provEditingId, provForm, openProvForm, saveProvider, deleteProvider,
+      agentFormOpen, agentEditingId, agentForm, openAgentForm, saveAgent, deleteAgent, agentModelsFor,
       prettyJSON, statusLabel, mdOfGroup, reasoningText, sessionStateLabel,
     };
   },

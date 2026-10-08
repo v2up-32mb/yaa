@@ -2,6 +2,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -28,6 +29,10 @@ type ReloadManager struct {
 	reload           sync.Mutex   // 串行化 watcher/tool reload 请求
 	active           bool         // 由 reload mutex 保护
 	logger           *slog.Logger
+	// OnApplied 在 Reload()/Update() 成功发布新快照后同步调用
+	// （仍持有 reload 锁：回调不得再调 Reload/Update）。
+	// 用于 Runtime 重建读时子系统（providers/agents/skills/tools…）。
+	OnApplied func(old, new *Config, changed []string)
 }
 
 // NewReloadManager 拒绝 nil, 立即保存已通过基础校验的不可变 initial snapshot.
@@ -116,10 +121,14 @@ func (m *ReloadManager) Reload() (ReloadResult, error) {
 	sort.Strings(changed)
 	// 没 restart path → 原子 Store
 	if len(restartPaths) == 0 {
+		oldSnap := m.value.Load().(*Config)
 		m.value.Store(candidate)
 		if len(changed) > 0 {
 			m.logger.Info("config reloaded",
 				slog.String("changed", strings.Join(changed, ",")))
+		}
+		if m.OnApplied != nil {
+			m.OnApplied(oldSnap, candidate, changed)
 		}
 		return ReloadResult{Applied: true, Changed: changed}, nil
 	}
@@ -134,48 +143,320 @@ func (m *ReloadManager) Reload() (ReloadResult, error) {
 	}, nil
 }
 
-// hotReloadAllowlist 是可热更新路径前缀集合. docs/config/hot-reload.md §4 表格.
-// 路径形式为点分隔的 leaf 字段路径 (数组下标已去除).
-var hotReloadAllowlist = []string{
-	"log.level",
-	"agents.model",
-	"agents.system_prompt",
-	"agents.max_tokens",
-	"agents.temperature",
-	"tools.default_timeout",
-	"tools.max_timeout",
-	"tools.default_max_retry",
-	"tools.max_result_tokens",
-	"tools.builtin.timeout",
-	"tools.builtin.options",
-	"session.max_messages",
-	"session.max_message_bytes",
-	"session.ttl",
-	"session.max_lifetime",
-	"session.persist",
-	"session.max_sessions_per_agent",
-	"session.cleanup_interval",
-	"agents.session", // 覆盖 agents[N].session.* 子字段
-	"context",        // 覆盖 context.* 及 agents[N].context.* (后者路径去 [N] 后为 agents.context)
-	"agents.context",
-	"memory.max_items",
-	"memory.default_ttl",
-	"memory.eviction_policy",
-	"memory.expire_interval",
-	"memory.expire_batch_size",
-	"agents.memory.max_items",
-	"agents.memory.default_ttl",
-	"agents.memory.eviction_policy",
-}
+// RedactedMask 是脱敏占位符：PUT /api/v1/config 的全量文档中，字符串值等于
+// 该占位符表示“保持旧值不变”（密钥等敏感字段在 GET 视图中即以此呈现）。
+// 旧快照中不存在的键即使填占位符也按字面写入（随后按敏感规则校验）。
+const RedactedMask = "***"
 
-// pathIsHotReloadable 判断路径是否在 allowlist (前缀匹配).
-func pathIsHotReloadable(path string) bool {
-	for _, p := range hotReloadAllowlist {
-		if path == p || strings.HasPrefix(path, p+".") {
-			return true
+// Update 是在线改配置的唯一入口（PUT /api/v1/config）：raw 为客户端提交的
+// 全量文档（已是 map 形式，由 handler 从 JSON 解码）。
+//  1. 持 reload mutex，要求 active=true；无配置文件路径时落盘到 DefaultConfigPath()
+//  2. 与当前 snapshot 做 RedactedMask 合并（"***" 标量保持旧值）
+//  3. migrateRaw → 敏感来源校验 → ApplyElementDefaults → DecodeInto → Validate → validateBindings
+//  4. 按目标文件原格式（新文件用 YAML）原子落盘（0600）
+//  5. diff：无 restart 路径 → 原子 Store（Applied=true）；有 → 只落盘不发布
+//     （Applied=false + RestartRequired=true，重启后生效）
+//
+// 任何失败都不写盘、不动旧 snapshot。
+func (m *ReloadManager) Update(raw map[string]any) (ReloadResult, error) {
+	m.reload.Lock()
+	defer m.reload.Unlock()
+	if !m.active {
+		return ReloadResult{}, ErrConfigNotActive
+	}
+	if raw == nil {
+		return ReloadResult{}, fmt.Errorf("%w: empty config document", ErrConfigHotReloadFailed)
+	}
+	target := m.path
+	if target == "" {
+		target = DefaultConfigPath()
+	}
+	old := m.value.Load().(*Config)
+	oldMap, err := configToMapForMerge(m, old, target)
+	if err != nil {
+		return ReloadResult{}, fmt.Errorf("%w: %v", ErrConfigHotReloadFailed, err)
+	}
+	merged := mergeKeepMask(oldMap, raw)
+	// JSON 数字归一化（int/duration 字段回放），再进严格解码管线。
+	merged = normalizeJSONNumbers(merged)
+	mergedDoc, ok := merged.(map[string]any)
+	if !ok {
+		return ReloadResult{}, fmt.Errorf("%w: merged config is not an object", ErrConfigHotReloadFailed)
+	}
+	migrated, err := migrateRaw(mergedDoc, m.logger)
+	if err != nil {
+		return ReloadResult{}, fmt.Errorf("%w: %v", ErrConfigHotReloadFailed, err)
+	}
+	if err := validateSensitiveSources(migrated); err != nil {
+		return ReloadResult{}, fmt.Errorf("%w: %v", ErrConfigHotReloadFailed, err)
+	}
+	// 与 Load 一致：落盘保留 ${} 引用不展开；快照侧展开后解码。
+	expanded := deepCopyMap(migrated)
+	if err := NewEnvResolver().ResolveMap(expanded); err != nil {
+		return ReloadResult{}, fmt.Errorf("expand environment: %w", err)
+	}
+	if err := ApplyElementDefaults(expanded); err != nil {
+		return ReloadResult{}, fmt.Errorf("%w: %v", ErrConfigHotReloadFailed, err)
+	}
+	candidate := Default()
+	if err := DecodeInto(expanded, candidate); err != nil {
+		return ReloadResult{}, fmt.Errorf("%w: %v", ErrConfigHotReloadFailed, err)
+	}
+	if err := new(Validator).Validate(candidate); err != nil {
+		return ReloadResult{}, fmt.Errorf("%w: %v", ErrConfigHotReloadFailed, err)
+	}
+	if m.validateBindings != nil {
+		if err := m.validateBindings(candidate); err != nil {
+			m.logger.Error("config update binding validation failed", err)
+			return ReloadResult{}, fmt.Errorf("%w: %v", ErrConfigHotReloadFailed, err)
 		}
 	}
-	return false
+	format := FormatYAML
+	if f, ferr := DetectFormat(target); ferr == nil {
+		format = f
+	}
+	data, err := MarshalMap(migrated, format)
+	if err != nil {
+		return ReloadResult{}, fmt.Errorf("%w: %v", ErrConfigHotReloadFailed, err)
+	}
+	if err := atomicWriteFile(target, data, 0o600); err != nil {
+		return ReloadResult{}, fmt.Errorf("%w: %v", ErrConfigHotReloadFailed, err)
+	}
+	changed, restartPaths, err := diffAndClassify(old, candidate)
+	if err != nil {
+		m.logger.Error("config update diff failed", err)
+		return ReloadResult{}, fmt.Errorf("%w: %v", ErrConfigHotReloadFailed, err)
+	}
+	sort.Strings(changed)
+	if len(restartPaths) == 0 {
+		oldSnap := m.value.Load().(*Config)
+		m.value.Store(candidate)
+		if len(changed) > 0 {
+			m.logger.Info("config updated",
+				slog.String("changed", strings.Join(changed, ",")))
+		}
+		if m.OnApplied != nil {
+			m.OnApplied(oldSnap, candidate, changed)
+		}
+		return ReloadResult{Applied: true, Changed: changed}, nil
+	}
+	m.logger.Info("config update requires restart",
+		slog.String("paths", strings.Join(restartPaths, ",")))
+	return ReloadResult{
+		Applied:         false,
+		Changed:         changed,
+		RestartRequired: true,
+		Paths:           restartPaths,
+	}, nil
+}
+
+// durationLeafNames 是全部 duration 类型字段的 yaml 叶名。Update() 经 JSON
+// 收到的数字统一视为纳秒数转回 "Nns" 字符串（GET 视图把 duration 编码为
+// 纳秒整数，而严格 decoder 只接受字符串或数字零）。核对过 types.go：这些叶名
+// 没有非 duration 字段复用。
+var durationLeafNames = map[string]bool{
+	"read_timeout": true, "write_timeout": true, "clock_skew": true,
+	"timeout": true, "default_timeout": true, "max_timeout": true,
+	"retry_interval": true, "initial_delay": true, "max_delay": true,
+	"backoff": true, "ttl": true, "max_lifetime": true, "default_ttl": true,
+	"expire_interval": true, "cleanup_interval": true,
+	"startup_timeout": true, "stop_timeout": true,
+	"health_interval": true, "health_timeout": true,
+	// 嵌套 duration 叶（mcp.timeout.connect/init/tool）；核对过无复用。
+	"connect": true, "init": true, "tool": true,
+}
+
+// normalizeJSONNumbers 把 JSON 解码后的数字归一化为严格 decoder 可接受的形态：
+//   - duration 叶名的整数值数字 → "Nns" 字符串（纳秒语义，与 GET 输出一致）；
+//   - 其余整数值数字（float64/json.Number）→ int（int 字段与 float 字段都可解）；
+//   - 小数保持 float64（只对 float 字段合法，打到 int 字段会正常报错）。
+//
+// 超过 float64 精确整数范围（2^53）的值保持原样，由 decoder 报错。
+func normalizeJSONNumbers(v any) any {
+	return normalizeJSONNumbersKeyed("", v)
+}
+
+func normalizeJSONNumbersKeyed(key string, v any) any {
+	switch n := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(n))
+		for k, e := range n {
+			out[k] = normalizeJSONNumbersKeyed(k, e)
+		}
+		return out
+	case []any:
+		out := make([]any, len(n))
+		for i, e := range n {
+			out[i] = normalizeJSONNumbersKeyed("", e)
+		}
+		return out
+	case float64:
+		if n == float64(int64(n)) {
+			return normalizeIntegralNumber(key, int64(n))
+		}
+		return n
+	case float32:
+		f := float64(n)
+		if f == float64(int64(f)) {
+			return normalizeIntegralNumber(key, int64(f))
+		}
+		return n
+	case json.Number:
+		if i, err := n.Int64(); err == nil {
+			return normalizeIntegralNumber(key, i)
+		}
+		if f, err := n.Float64(); err == nil {
+			return f
+		}
+		return v
+	default:
+		return v
+	}
+}
+
+func normalizeIntegralNumber(key string, i int64) any {
+	if durationLeafNames[key] {
+		return fmt.Sprintf("%dns", i)
+	}
+	return int(i)
+}
+
+// configToMapForMerge 返回 Update() 的合并基准：有配置文件时用文件原始 map
+// （未经环境变量展开，${} 引用完整，否则 "***" 合并拿到展开后的明文）；
+// 无文件时用当前快照。
+func configToMapForMerge(m *ReloadManager, old *Config, target string) (map[string]any, error) {
+	if m.path != "" {
+		return ParseFileToMap(target)
+	}
+	return ConfigToMap(old)
+}
+
+// deepCopyMap 深拷贝 raw map（合并/展开管线不得污染输入）。
+func deepCopyMap(raw map[string]any) map[string]any {
+	if raw == nil {
+		return nil
+	}
+	out := make(map[string]any, len(raw))
+	for k, v := range raw {
+		out[k] = deepCopyValue(v)
+	}
+	return out
+}
+
+func deepCopyValue(v any) any {
+	switch t := v.(type) {
+	case map[string]any:
+		return deepCopyMap(t)
+	case []any:
+		out := make([]any, len(t))
+		for i, e := range t {
+			out[i] = deepCopyValue(e)
+		}
+		return out
+	default:
+		return v
+	}
+}
+
+// maskDroppedT 是 mergeKeepMask 的内部哨兵类型：old 缺失路径上的 "***" 噪声
+// （脱敏视图把缺席零值也呈现为 "***"）应被丢弃而非字面写回。
+type maskDroppedT struct{}
+
+var maskDropped = maskDroppedT{}
+
+func isMaskDropped(v any) bool {
+	_, ok := v.(maskDroppedT)
+	return ok
+}
+
+// mergeKeepMask 递归合并，语义（路径相对于 old 判定）：
+//   - new 叶为 "***" 且 old 有对应值 → 保持旧值；
+//   - new 叶为 "***" 且 old 无对应值 → 丢弃（脱敏零值回放），
+//     空 map/数组同样上浮丢弃；
+//   - 其余标量与新增元素按字面保留；old 独有的键不补回
+//     （全量 PUT 缺键即删除意图；显式空 map 表示清空）。
+func mergeKeepMask(old, new any) any {
+	switch n := new.(type) {
+	case map[string]any:
+		var o map[string]any
+		if om, ok := old.(map[string]any); ok {
+			o = om
+		}
+		out := make(map[string]any, len(n))
+		for k, v := range n {
+			if o != nil {
+				if existing, ok := o[k]; ok {
+					out[k] = mergeKeepMask(existing, v)
+					continue
+				}
+			}
+			if merged := mergeKeepMask(nil, v); !isMaskDropped(merged) {
+				out[k] = merged
+			}
+		}
+		if len(out) == 0 && o == nil {
+			return maskDropped
+		}
+		return out
+	case []any:
+		var o []any
+		if oa, ok := old.([]any); ok {
+			o = oa
+		}
+		out := make([]any, 0, len(n))
+		for i, v := range n {
+			if i < len(o) {
+				out = append(out, mergeKeepMask(o[i], v))
+				continue
+			}
+			if merged := mergeKeepMask(nil, v); !isMaskDropped(merged) {
+				out = append(out, merged)
+			}
+		}
+		if len(out) == 0 && o == nil {
+			return maskDropped
+		}
+		return out
+	case string:
+		if n == RedactedMask {
+			if old != nil {
+				return old
+			}
+			return maskDropped
+		}
+		return n
+	default:
+		return new
+	}
+}
+
+// restartRequiredPrefixes 是必须重启才生效的路径前缀集合：持有持续性状态
+// （数据库文件、监听端口、日志文件句柄、子进程、长连接、向量索引管线），
+// 进程内无法安全热切换。除此之外的所有路径（providers/agents/skills/tools
+// 读时配置、auth 对象、log.level、session/context 策略、memory 标量策略等）
+// 均为读时生效：快照交换后下次读取即新值，结构性子系统由 Runtime 重建交换。
+// 路径形式为点分隔的 leaf 字段路径（数组下标已去除），前缀匹配。
+var restartRequiredPrefixes = []string{
+	"runtime.storage",  // SQLite 文件
+	"runtime.api",      // 监听地址与服务参数
+	"log.output",       // 日志文件句柄
+	"log.format",       // 日志 handler 形态
+	"memory.enabled",   // 记忆子系统启停（ContentStore 生命周期）
+	"memory.storage",   // 记忆 SQLite 文件
+	"memory.embedding", // embedding 管线（索引重建语义）
+	"memory.vector",    // 向量索引管线
+	"plugins",          // 插件子进程生命周期
+	"mcp",              // 上游 MCP 连接与本地 Serve
+}
+
+// pathIsHotReloadable 判断路径是否改即生效（不在重启集合中即热生效）。
+func pathIsHotReloadable(path string) bool {
+	for _, p := range restartRequiredPrefixes {
+		if path == p || strings.HasPrefix(path, p+".") {
+			return false
+		}
+	}
+	return true
 }
 
 // diffAndClassify 比较两个 Config, 返回所有 changed leaf 路径

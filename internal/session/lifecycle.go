@@ -39,9 +39,15 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest) (sessOut *Sessi
 	if !m.agentExists(req.AgentID) {
 		return nil, fmt.Errorf("%w: agent %s", ErrAgentNotFound, req.AgentID)
 	}
+	if err := m.validateModelOverride(req.Model); err != nil {
+		return nil, err
+	}
 
-	// 解析 policy（无锁：需要的只是 root + agent override + create override）
-	policy := config.ResolveSessionPolicy(m.cfg, m.agentOverride(req.AgentID), req.Policy)
+	// 解析 policy（root 快照拷贝后无锁计算；SetRootConfig 与快照拷贝互斥）。
+	m.mu.RLock()
+	rootCfg := m.cfg
+	m.mu.RUnlock()
+	policy := config.ResolveSessionPolicy(rootCfg, m.agentOverride(req.AgentID), req.Policy)
 	if err := validateResolvedPolicy(policy); err != nil {
 		return nil, err
 	}
@@ -58,6 +64,7 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest) (sessOut *Sessi
 			active++
 		}
 	}
+	// 此处已持写锁，直接读 m.cfg（SetRootConfig 与之互斥）。
 	if m.cfg.MaxSessionsPerAgent > 0 && active >= m.cfg.MaxSessionsPerAgent {
 		m.mu.Unlock()
 		return nil, fmt.Errorf("%w: agent %s has %d active sessions", ErrCapacityExceeded, req.AgentID, active)
@@ -73,6 +80,7 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest) (sessOut *Sessi
 		LastActivityAt: now,
 		Metadata:       normalizeMap(req.Metadata),
 		Policy:         policy,
+		Model:          cloneModelOverride(req.Model),
 		SchemaVersion:  1,
 	}
 	// 先注册内存索引占位，防止并发 Create 越界；失败时回退
@@ -107,6 +115,62 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest) (sessOut *Sessi
 
 	// 成功返深拷贝 (defer 处理 opInc + currentInc).
 	return sess.clone(), nil
+}
+
+// validateModelOverride 校验会话级 provider/model 覆盖：要么整体为空（无覆盖），
+// 要么 provider 与 model 均非空；存在性由 modelExists 回调校验（nil 回调跳过，
+// 存在性最终由 turn 解析时权威判定）。
+func (m *Manager) validateModelOverride(ov *ModelOverride) error {
+	if ov == nil {
+		return nil
+	}
+	if ov.Provider == "" || ov.Model == "" {
+		return fmt.Errorf("%w: provider and model must both be set", ErrInvalidModelOverride)
+	}
+	if m.modelExists != nil && !m.modelExists(ov.Provider, ov.Model) {
+		return fmt.Errorf("%w: model %q not defined in provider %q", ErrInvalidModelOverride, ov.Model, ov.Provider)
+	}
+	return nil
+}
+
+func cloneModelOverride(ov *ModelOverride) *ModelOverride {
+	if ov == nil {
+		return nil
+	}
+	cp := *ov
+	return &cp
+}
+
+// SetModel 设置/清除会话级 provider/model 覆盖（nil 表示清除，回到 Agent 配置）。
+// turn 解析优先级为会话覆盖 > Agent 配置。Closed 会话拒绝变更。
+func (m *Manager) SetModel(ctx context.Context, sessionID string, ov *ModelOverride) (sessOut *Session, err error) {
+	if err = ctx.Err(); err != nil {
+		return nil, err
+	}
+	if err := m.validateModelOverride(ov); err != nil {
+		return nil, err
+	}
+	err = m.runInSession(sessionID, func() error {
+		s, err := m.getSnapshotLocked(sessionID)
+		if err != nil {
+			return err
+		}
+		if s.State == StateClosed {
+			return fmt.Errorf("%w: session is closed", ErrSessionClosed)
+		}
+		cand := s.clone()
+		cand.Model = cloneModelOverride(ov)
+		cand.UpdatedAt = m.clock.Now()
+		if cerr := m.commit(cand); cerr != nil {
+			return cerr
+		}
+		sessOut = cand.clone()
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return sessOut, nil
 }
 
 // rollbackCreate 在持久化失败时回退内存索引与 runner。
@@ -199,6 +263,14 @@ func (m *Manager) List(ctx context.Context, agentID string, q ListQuery) ([]*Ses
 		end = total
 	}
 	return out[start:end], total, nil
+}
+
+// SetRootConfig 交换根 Session 配置（在线改配置 session.* 即生效：
+// 后续新建会话用新策略，cleanup 间隔下个 tick 自适应）。
+func (m *Manager) SetRootConfig(cfg config.SessionConfig) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.cfg = cfg
 }
 
 // Pause 将 active -> paused。

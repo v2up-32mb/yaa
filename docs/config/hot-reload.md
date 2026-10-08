@@ -7,7 +7,7 @@
 
 ## 1. 契约
 
-热更新只应用明确列入 allowlist 的纯配置值。任何需要重新绑定端口、重建客户端、切换存储、启动进程、改变注册表或重建并发 gate 的字段都保持旧 snapshot，并在 `ReloadResult` 中标记 `restart_required`。
+热更新/在线改配置的生效分类见 §4：读时配置在快照发布后即生效（结构性子系统由 Runtime 重建交换）；持有持续性状态（数据库文件、监听端口、日志文件句柄、子进程、长连接、索引管线）的字段保持旧 snapshot，并在 `ReloadResult` 中标记 `restart_required`（文件已落盘，重启后生效）。
 
 固定流程：
 
@@ -134,38 +134,30 @@ Provider/Tool/Plugin/MCP/Skill catalog 使用同一个 `initial` 建立后，Run
 
 Load、绑定校验或内部发布错误返回非 nil error，旧 snapshot 保持不变。调用方不得修改 `Current()` 返回的字段、slice 或 map；需要可变数据的模块必须复制自己的字段。
 
-## 4. 唯一 hot-reload allowlist
+## 4. 生效分类：读时生效 vs 重启生效
 
-数组元素必须按稳定 ID/name 匹配；新增、删除或修改 ID 一律需要重启。
+规则：持有持续性状态（数据库文件、监听端口、日志文件句柄、子进程、长连接、
+向量索引管线）的路径必须重启；其余读时配置改完即生效（快照交换后下次读取
+即新值，结构性子系统由 Runtime 按依赖顺序重建交换，见 `Runtime.applyConfig`）。
 
 | 路径 | 生效时机 |
 |------|----------|
-| `log.level` | 下一条日志 |
-| `agents[].model` | 下一次模型请求 |
-| `agents[].system_prompt` | 下一次 Context 构建 |
-| `agents[].max_tokens`, `agents[].temperature` | 下一次模型请求 |
-| `tools.default_timeout`, `tools.max_timeout`, `tools.default_max_retry`, `tools.max_result_tokens` | 下一次 Tool 调用 |
-| `tools.builtin.<name>.timeout`, `tools.builtin.<name>.options` | 下一次对应 Tool 调用 |
-| `session.max_messages`, `session.max_message_bytes`, `session.ttl`, `session.max_lifetime`, `session.persist`, `agents[].session.*` | reload 后新建的 Session |
-| `session.max_sessions_per_agent` | 下一次 Create |
-| `session.cleanup_interval` | 下一次 cleanup ticker 重置 |
-| `context.*`, `agents[].context.*` | 下一次 Context 构建 |
-| `memory.max_items`, `memory.default_ttl`, `memory.eviction_policy` | 下一次 Agent turn 或 Remote Memory 请求 |
-| `memory.expire_interval`, `memory.expire_batch_size` | 下一次 cleanup worker tick |
-| `agents[].memory.{max_items,default_ttl,eviction_policy}` | 下一次该 Agent turn 或 Remote Memory 请求 |
+| `providers.*`（新增/删除/改模型） | provider 通道原地刷新后下一次模型请求 |
+| `agents.*`（新增/删除/改模型等）、根 `planner.*` | agent 绑定重建后下一次 turn |
+| `skills.*`（含 `skills.dir` 重扫） | skill 重建后下一次 Skill 解析 |
+| `tools.*`（含 builtin 开关/options） | tool 通道原地刷新后下一次 Tool 调用 |
+| `runtime.auth.*` | 认证对象重建后下一次请求 |
+| `log.level` | 下一条日志（进程共享 LevelVar） |
+| `session.*`（含 `cleanup_interval`） | 新建会话即用新策略；cleanup 间隔下个 tick 自适应 |
+| `context.*`、`agents[].context.*`、`agents[].session.*` | 下一次 Context 构建 / 新建 Session |
+| `memory` 标量策略（`max_items`、`default_ttl`、`eviction_policy`、`expire_interval` 等） | 下一次 Agent turn 或 Remote Memory 请求 |
 
-以下分组全部需要重启：
+以下分组持有持续性状态，必须重启（`restart_required`，文件已落盘）：
 
-- `runtime.storage.*`、`runtime.api.*`、`runtime.auth.*`
-- Provider 新增/删除及 `providers[].*`
-- Agent 新增/删除、ID/provider/tools/skills、`agents[].planner.*`、`agents[].tools_config`、`agents[].skills_config`
-- 根 `planner.*`、Planner Executor 的 `max_concurrent`
-- `mcp.*`、`plugins.*`
-- `skills.dir`、Skill 新增/删除、`skills.per_skill.<name>.enabled` 或结构/options 变化
-- Tool 新增/删除、`tools.builtin.<name>.enabled`、`tools.max_concurrent`、`tools.max_concurrent_per_session`
-- `memory.enabled`, `memory.storage.*`, `memory.vector.*`, `memory.embedding.*`
-- `agents[].memory.enabled`, `agents[].memory.vector.*`
-- `log.format`, `log.output`
+- `runtime.storage.*`（SQLite 文件）、`runtime.api.*`（监听地址与服务参数）
+- `log.output`、`log.format`（文件句柄与 handler 形态）
+- `memory.enabled`、`memory.storage.*`、`memory.vector.*`、`memory.embedding.*`（ContentStore 生命周期与索引重建语义）
+- `plugins.*`（子进程生命周期）、`mcp.*`（上游连接与本地 Serve）
 
 若一批变更同时包含可热更新和需重启路径，整批不应用。已创建 Session 使用 snapshot 中持久化的 resolved policy；reload 不扫描、不改写现有 Session，也不改变其 TTL、max lifetime 或 persist 语义。Context/Session 的 `validateBindings` 必须在 `Store` 前完成所有 Agent 的有效配置检查。
 

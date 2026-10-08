@@ -277,6 +277,11 @@ code { font-family: Consolas, "Courier New", monospace; }
 .cfg-pre { max-height: 260px; overflow: auto; font-size: 11px; line-height: 1.5; background: var(--bg-sunken, #f6f7f9); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; margin: 0; white-space: pre-wrap; word-break: break-all; }
 .welcome-warn { color: var(--warn); }
 .welcome-warn code { font-size: 12px; }
+.model-select { width: 210px; }
+.model-tag { font-size: 11px; color: var(--text-faint); }
+.model-tag.warn { color: var(--warn); }
+.row-inline { display: flex; align-items: center; gap: 10px; }
+.cfg-table { width: 100%; margin-bottom: 8px; }
 
 /* 滚动条 */
 ::-webkit-scrollbar { width: 8px; height: 8px; }

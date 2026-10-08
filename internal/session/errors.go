@@ -25,6 +25,7 @@ var (
 	ErrRestoreFailed           = errors.New("session: restore failed")
 	ErrSchemaUnsupported       = errors.New("session: unsupported schema")
 	ErrManagerClosed           = errors.New("session: manager closed")
+	ErrInvalidModelOverride    = errors.New("session: invalid model override")
 	ErrInvalidTurnID           = errors.New("session: invalid turn id")
 	ErrTurnIDConflict          = errors.New("session: turn id already used")
 	ErrTurnNotActive           = errors.New("session: turn not active")

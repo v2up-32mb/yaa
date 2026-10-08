@@ -42,7 +42,11 @@ func init() {
 }
 
 // Manager 持有由配置决定的 Provider 集合，每个 Provider 已包含重试包装。
+// Refresh 支持在线改配置时的原地交换：在途 turn 持有旧 adapter 指针继续执行，
+// 新 turn 读到新集合（读写锁保护 map）。旧 adapter 不主动 Close（其 Close
+// 语义均为释放空闲连接；在途请求不受影响，GC 回收）。
 type Manager struct {
+	mu        sync.RWMutex
 	providers map[string]Provider
 	configs   map[string]config.ProviderConfig
 }
@@ -78,6 +82,8 @@ func NewManager(configs []config.ProviderConfig) (*Manager, error) {
 
 // Get 返回指定 ID 的 Provider（含重试包装）。
 func (m *Manager) Get(id string) (Provider, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	p, ok := m.providers[id]
 	if !ok {
 		return nil, fmt.Errorf("%w: %s", ErrProviderNotFound, id)
@@ -87,6 +93,8 @@ func (m *Manager) Get(id string) (Provider, error) {
 
 // List 按 ID 排序返回只读 ProviderInfo 副本。
 func (m *Manager) List() []ProviderInfo {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	ids := make([]string, 0, len(m.providers))
 	for id := range m.providers {
 		ids = append(ids, id)
@@ -100,9 +108,27 @@ func (m *Manager) List() []ProviderInfo {
 	return out
 }
 
+// HasModel 判断指定 provider 下是否存在指定 model（会话级覆盖的存在性校验用）。
+func (m *Manager) HasModel(providerID, modelID string) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	p, ok := m.providers[providerID]
+	if !ok {
+		return false
+	}
+	for _, mi := range p.Models() {
+		if mi.ID == modelID {
+			return true
+		}
+	}
+	return false
+}
+
 // Config 返回指定 ID Provider 的原 ProviderConfig 副本（含 timeout/max_retries/retry_interval 等），
 // 供 Remote API 只读视图（docs/remote-api/provider.md ProviderView）使用。不存在返 fmt.Errorf。
 func (m *Manager) Config(id string) (config.ProviderConfig, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	c, ok := m.configs[id]
 	if !ok {
 		return config.ProviderConfig{}, fmt.Errorf("%w: %s", ErrProviderNotFound, id)
@@ -110,16 +136,54 @@ func (m *Manager) Config(id string) (config.ProviderConfig, error) {
 	return c, nil
 }
 
+// Refresh 用新配置原地重建全部 adapter 并原子交换（在线改配置用）。
+// 先完整构造新集合，任一失败则旧集合保持不动；旧 adapter 不 Close
+// （在途 turn 继续用旧实例完成）。与 NewManager 同样的构造校验。
+func (m *Manager) Refresh(configs []config.ProviderConfig) error {
+	freshProviders := make(map[string]Provider, len(configs))
+	freshConfigs := make(map[string]config.ProviderConfig, len(configs))
+	for _, cfg := range configs {
+		if cfg.ID == "" {
+			return fmt.Errorf("provider config with empty id")
+		}
+		if _, dup := freshProviders[cfg.ID]; dup {
+			return fmt.Errorf("duplicate provider id %q", cfg.ID)
+		}
+		f, ok := factoryOf(cfg.Type)
+		if !ok {
+			return fmt.Errorf("unsupported provider type %q for id %q", cfg.Type, cfg.ID)
+		}
+		adapter, err := f(cfg)
+		if err != nil {
+			return fmt.Errorf("create provider %q: %w", cfg.ID, err)
+		}
+		inner := newRetrying(adapter, cfg.Timeout, cfg.MaxRetries, cfg.RetryInterval)
+		freshProviders[cfg.ID] = inner
+		freshConfigs[cfg.ID] = cfg
+	}
+	m.mu.Lock()
+	m.providers = freshProviders
+	m.configs = freshConfigs
+	m.mu.Unlock()
+	return nil
+}
+
 // Close 按 ID 排序关闭所有 Provider，错误用 errors.Join 聚合后返回最早的启动错误。
 func (m *Manager) Close() error {
+	m.mu.RLock()
 	ids := make([]string, 0, len(m.providers))
 	for id := range m.providers {
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
-	var errs []error
+	adapters := make([]Provider, 0, len(ids))
 	for _, id := range ids {
-		if err := m.providers[id].Close(); err != nil {
+		adapters = append(adapters, m.providers[id])
+	}
+	m.mu.RUnlock()
+	var errs []error
+	for i, id := range ids {
+		if err := adapters[i].Close(); err != nil {
 			errs = append(errs, fmt.Errorf("close provider %q: %w", id, err))
 		}
 	}

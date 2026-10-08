@@ -21,6 +21,8 @@ func (s *Server) registerRoutes(r *mux.Router) {
 		Action: "read", Resource: "system", Transport: TransportHTTP}, s.handleVersion)
 	s.registerProtected(r, routeSpec{Method: http.MethodGet, Pattern: "/api/v1/config",
 		Action: "read", Resource: "config", Transport: TransportHTTP}, s.handleGetConfig)
+	s.registerProtected(r, routeSpec{Method: http.MethodPut, Pattern: "/api/v1/config",
+		Action: "write", Resource: "config", Transport: TransportHTTP}, s.handlePutConfigRoute)
 
 	// ---- 3.2 Agent (5) ----
 	s.registerProtected(r, routeSpec{Method: http.MethodGet, Pattern: "/api/v1/agents",
@@ -51,6 +53,8 @@ func (s *Server) registerRoutes(r *mux.Router) {
 		Action: "delete", Resource: "sessions", Transport: TransportHTTP}, s.handleDeleteSessionRoute)
 	s.registerProtected(r, routeSpec{Method: http.MethodPost, Pattern: "/api/v1/sessions/{id}/clear",
 		Action: "write", Resource: "sessions", Transport: TransportHTTP}, s.handleClearMessagesRoute)
+	s.registerProtected(r, routeSpec{Method: http.MethodPost, Pattern: "/api/v1/sessions/{id}/model",
+		Action: "write", Resource: "sessions", Transport: TransportHTTP}, s.handleSetSessionModelRoute)
 	s.registerProtected(r, routeSpec{Method: http.MethodGet, Pattern: "/api/v1/sessions/{id}/messages",
 		Action: "read", Resource: "sessions", Transport: TransportHTTP}, s.handleListMessagesRoute)
 	s.registerProtected(r, routeSpec{Method: http.MethodDelete, Pattern: "/api/v1/sessions/{id}/messages/{msgid}",

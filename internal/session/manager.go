@@ -27,6 +27,9 @@ type Manager struct {
 	// 由外部传入，Manager 自己不查 Agent 注册表（依赖单一方向）。
 	agentOverride func(agentID string) *config.SessionOverride
 	agentExists   func(agentID string) bool
+	// modelExists 校验会话级 provider/model 覆盖是否存在；nil 表示跳过存在性
+	// 校验（存在性最终由 turn 解析时权威判定）。
+	modelExists func(provider, model string) bool
 
 	mu          sync.RWMutex
 	sessions    map[string]*Session
@@ -51,6 +54,8 @@ type Manager struct {
 type ManagerOptions struct {
 	AgentOverride func(agentID string) *config.SessionOverride
 	AgentExists   func(agentID string) bool
+	// ModelExists 校验会话级 provider/model 覆盖；nil 表示跳过存在性校验。
+	ModelExists func(provider, model string) bool
 }
 
 // turnControl 保存单个在途 turn 的取消句柄。
@@ -96,6 +101,7 @@ func newManagerWith(cfg config.SessionConfig, store storage.Storage, logger *slo
 		ids:           ids,
 		agentOverride: opts.AgentOverride,
 		agentExists:   opts.AgentExists,
+		modelExists:   opts.ModelExists,
 		sessions:      map[string]*Session{},
 		agentIdx:      map[string]map[string]struct{}{},
 		runners:       map[string]*runner{},
@@ -191,7 +197,9 @@ func (m *Manager) Start(ctx context.Context) error {
 	m.cleanupCtx, m.cleanupCancel = context.WithCancel(context.Background())
 	m.mu.Unlock()
 
+	m.mu.RLock()
 	interval := m.cfg.CleanupInterval
+	m.mu.RUnlock()
 	if interval < time.Second {
 		interval = time.Minute
 	}
@@ -273,9 +281,13 @@ func (m *Manager) cancelAllTurns(ctx context.Context) error {
 	return nil
 }
 
-// cleanupLoop 定期检查每个 Session 的过期状态。
+// cleanupLoop 定期检查每个 Session 的过期状态。每个 tick 结束时按当前根配置
+// 自适应间隔（在线改配置 session.cleanup_interval 即生效）。
 func (m *Manager) cleanupLoop(interval time.Duration) {
 	defer m.cleanupWg.Done()
+	if interval < time.Second {
+		interval = time.Minute
+	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
@@ -284,6 +296,16 @@ func (m *Manager) cleanupLoop(interval time.Duration) {
 			return
 		case <-ticker.C:
 			m.cleanupOnce()
+			m.mu.RLock()
+			cur := m.cfg.CleanupInterval
+			m.mu.RUnlock()
+			if cur < time.Second {
+				cur = time.Minute
+			}
+			if cur != interval {
+				interval = cur
+				ticker.Reset(cur)
+			}
 		}
 	}
 }

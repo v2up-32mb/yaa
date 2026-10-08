@@ -69,6 +69,7 @@ func (v *Validator) Validate(cfg *Config) error {
 	embeddingRequired := cfg.Memory.Enabled && cfg.Memory.Vector.Enabled
 
 	providerIDs := make(map[string]bool, len(cfg.Providers))
+	providerModels := make(map[string]map[string]bool, len(cfg.Providers))
 	for i, provider := range cfg.Providers {
 		configPath := fmt.Sprintf("providers[%d]", i)
 		if provider.ID == "" {
@@ -78,6 +79,15 @@ func (v *Validator) Validate(cfg *Config) error {
 				add(&errs, configPath+".id", "unique", "provider id must be unique")
 			}
 			providerIDs[provider.ID] = true
+		}
+		models := make(map[string]bool, len(provider.Models))
+		for _, model := range provider.Models {
+			if model.ID != "" {
+				models[model.ID] = true
+			}
+		}
+		if provider.ID != "" {
+			providerModels[provider.ID] = models
 		}
 		validateProviderConfig(&errs, configPath, provider)
 	}
@@ -102,8 +112,13 @@ func (v *Validator) Validate(cfg *Config) error {
 			add(&errs, configPath+".provider", "reference",
 				fmt.Sprintf("provider %q not defined in providers list", agent.Provider))
 		}
-		if agent.Model == "" {
-			add(&errs, configPath+".model", "required", "model must not be empty")
+		// agents[].model 可空（无模型 agent 靠会话级覆盖供给模型）；非空时必须
+		// 引用其 provider 下已配置的模型。
+		if agent.Model != "" && providerIDs[agent.Provider] {
+			if !providerModels[agent.Provider][agent.Model] {
+				add(&errs, configPath+".model", "reference",
+					fmt.Sprintf("model %q not defined in provider %q", agent.Model, agent.Provider))
+			}
 		}
 		if agent.MaxTokens <= 0 {
 			add(&errs, configPath+".max_tokens", "range", "must be > 0")

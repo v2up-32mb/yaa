@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/v2up-32mb/yaa/internal/auth"
 	"github.com/v2up-32mb/yaa/internal/config"
 	ctxwindow "github.com/v2up-32mb/yaa/internal/context"
+	"github.com/v2up-32mb/yaa/internal/logging"
 	"github.com/v2up-32mb/yaa/internal/mcp"
 	mm "github.com/v2up-32mb/yaa/internal/memory"
 	"github.com/v2up-32mb/yaa/internal/memory/embedding"
@@ -51,6 +53,9 @@ type Runtime struct {
 	startedAt    time.Time
 	components   map[string]string
 	componentsMu sync.RWMutex
+	// managersMu 保护可热交换的管理器指针（skills/agents）：在线改配置重建
+	// 交换时与 Health/Shutdown 并发读写互斥。在途 turn 持有旧管理器继续执行。
+	managersMu sync.RWMutex
 }
 
 // New 构造 Runtime，但不启动任何组件。
@@ -81,10 +86,14 @@ func (rt *Runtime) Start(ctx context.Context) error {
 
 	// 如 configPath 已设置, 构造 ReloadManager 持有当前 snapshot (行58 集成).
 	// Activate 失败不阻塞 Runtime 启动 (旧 cfg 仍有效), 仅记录 warning 并保持 reloadMgr=nil.
-	if rt.configPath != "" && rt.reloadMgr == nil {
+	// 无配置文件路径时 path 为空，Update() 落盘到默认 DefaultConfigPath()；
+	// OnApplied 挂载读时子系统重建（见 applyConfig），快照发布成功即自动生效。
+	// 保证纯默认启动也能在线改配置。
+	if rt.reloadMgr == nil {
 		if rm, err := config.NewReloadManager(rt.cfg, rt.configPath, nil, nil); err == nil {
 			if aerr := rm.Activate(); aerr == nil {
 				rt.reloadMgr = rm
+				rm.OnApplied = rt.applyConfig
 				rt.cfg = rm.Current() // 切到 ReloadManager 持有的 same snapshot
 			} else {
 				rt.logger.Warn("runtime: config activate failed; reload disabled", "error", aerr)
@@ -216,13 +225,7 @@ func (rt *Runtime) Start(ctx context.Context) error {
 
 	// Skill Manager：启动期 all-or-nothing 加载 SKILL.md + Agent binding 校验
 	// （docs/skill/manager.md §3）。baseDir 取自主配置文件目录；未设置时相对 cwd。
-	baseDir := ""
-	if rt.configPath != "" {
-		if abs, aerr := filepath.Abs(rt.configPath); aerr == nil {
-			baseDir = filepath.Dir(abs)
-		}
-	}
-	skm, serr := skill.Load(rt.cfg.Skills, rt.cfg.Agents, tm, baseDir)
+	skm, serr := skill.Load(rt.cfg.Skills, rt.cfg.Agents, tm, rt.skillBaseDir())
 	if serr != nil {
 		rt.rollback()
 		return fmt.Errorf("runtime: load skills: %w", serr)
@@ -251,6 +254,7 @@ func (rt *Runtime) Start(ctx context.Context) error {
 	sm := session.NewManager(rt.cfg.Session, rt.store, rt.logger, session.ManagerOptions{
 		AgentExists:   rt.agentExists,
 		AgentOverride: rt.agentSessionOverride,
+		ModelExists:   rt.modelExists,
 	})
 	if rerr := sm.Restore(ctx, time.Now().UTC()); rerr != nil {
 		rt.rollback()
@@ -287,6 +291,10 @@ func (rt *Runtime) Start(ctx context.Context) error {
 	rt.api.SetProviderManager(rt.providers)
 	// 注入 Config snapshot 供 GET /api/v1/config 使用 config.RedactedView。
 	rt.api.SetConfigSnapshot(rt.cfg)
+	// 在线改配置：ReloadManager 存在时注入（总存在，除非上面构造失败）。
+	if rt.reloadMgr != nil {
+		rt.api.SetReloadManager(rt.reloadMgr)
+	}
 	if authn != nil {
 		rt.api.SetAuth(true, authn, authz, publicPaths)
 	}
@@ -373,8 +381,11 @@ func (rt *Runtime) Health() api.HealthData {
 		status = "degraded"
 	}
 	var agentCounts api.AgentCounts
-	if rt.agents != nil {
-		for _, info := range rt.agents.List(nil) {
+	rt.managersMu.RLock()
+	agents := rt.agents
+	rt.managersMu.RUnlock()
+	if agents != nil {
+		for _, info := range agents.List(nil) {
 			agentCounts.Total++
 			switch info.Status {
 			case agent.StatusRunning:
@@ -405,6 +416,9 @@ func (rt *Runtime) UptimeSeconds() int64 {
 // Shutdown 按依赖逆序关闭子系统：先 Not Ready，再 API，最后 Storage。
 func (rt *Runtime) Shutdown(ctx context.Context) error {
 	rt.ready.Store(false) // 先原子标记 Not Ready
+	// 与在线改配置的应用管线互斥：关闭期间不交换管理器。
+	rt.managersMu.Lock()
+	defer rt.managersMu.Unlock()
 	var errs []error
 	if rt.api != nil {
 		if err := rt.api.Shutdown(ctx); err != nil {
@@ -497,6 +511,125 @@ func (rt *Runtime) rollback() {
 	rt.componentsMu.Unlock()
 }
 
+// skillBaseDir 返回 skills/plugins 相对路径的解析基准：主配置文件所在目录，
+// 未设置时为空（相对当前工作目录，与启动期一致）。
+func (rt *Runtime) skillBaseDir() string {
+	if rt.configPath != "" {
+		if abs, aerr := filepath.Abs(rt.configPath); aerr == nil {
+			return filepath.Dir(abs)
+		}
+	}
+	return ""
+}
+
+// changedHas 判断变更路径是否命中任一前缀（restart 分类已去除下标，与
+// pathIsHotReloadable 同一规范形式）。
+func changedHas(changed []string, prefixes ...string) bool {
+	for _, c := range changed {
+		for _, p := range prefixes {
+			if c == p || strings.HasPrefix(c, p+".") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// applyConfig 是 ReloadManager.OnApplied 回调：快照已发布，对读时子系统按
+// 依赖顺序重建交换，改配置即生效。顺序：providers → tools → skills →
+// agents → auth/session/log。任一通道失败即停并 loud 日志（快照已更新，
+// 读快照的字段先生效；管理器保持旧实例，下次成功应用时追平）。
+// 在途 turn/请求持有旧管理器继续执行，不受影响。
+func (rt *Runtime) applyConfig(old, newCfg *config.Config, changed []string) {
+	rt.cfg = newCfg
+	if changedHas(changed, "providers") {
+		if err := rt.providers.Refresh(newCfg.Providers); err != nil {
+			rt.logger.Error("runtime: apply providers failed; keeping previous set", err)
+			return
+		}
+	}
+	if changedHas(changed, "tools") {
+		if err := builtin.RefreshBuiltin(rt.tools, newCfg); err != nil {
+			rt.logger.Error("runtime: apply tools failed; keeping previous set", err)
+			return
+		}
+	}
+	if changedHas(changed, "skills") {
+		skm, serr := skill.Load(newCfg.Skills, newCfg.Agents, rt.tools, rt.skillBaseDir())
+		if serr != nil {
+			rt.logger.Error("runtime: apply skills failed; keeping previous set", serr)
+			return
+		}
+		rt.managersMu.Lock()
+		rt.skills = skm
+		rt.managersMu.Unlock()
+		rt.api.SetSkillManager(skm)
+	}
+	if changedHas(changed, "agents", "planner") {
+		if err := rt.rebuildAgents(newCfg); err != nil {
+			rt.logger.Error("runtime: apply agents failed; keeping previous set", err)
+			return
+		}
+	}
+	if changedHas(changed, "runtime.auth") {
+		authn, authz, publicPaths, aerr := buildAuth(newCfg.Runtime.Auth)
+		if aerr != nil {
+			rt.logger.Error("runtime: apply auth failed; keeping previous set", aerr)
+			return
+		}
+		if authn != nil {
+			rt.api.SetAuth(true, authn, authz, publicPaths)
+		} else {
+			rt.api.SetAuth(false, nil, nil, nil)
+		}
+	}
+	if changedHas(changed, "session") {
+		rt.sessions.SetRootConfig(newCfg.Session)
+	}
+	if changedHas(changed, "log.level") {
+		if err := logging.SetLevel(newCfg.Log.Level); err != nil {
+			rt.logger.Error("runtime: apply log.level failed", err)
+			return
+		}
+	}
+	rt.logger.Info("runtime: config applied to live subsystems", "changed", strings.Join(changed, ","))
+}
+
+// rebuildAgents 用新快照重建 Agent Manager 并交换（tools/skills 用当前已
+// 刷新实例；planner runner 随新绑定重建）。旧管理器不 Shutdown（在途 turn
+// 继续用旧绑定完成；其 Shutdown 仅标记 closed，无后台资源）。
+func (rt *Runtime) rebuildAgents(newCfg *config.Config) error {
+	rt.managersMu.RLock()
+	tm := rt.tools
+	skm := rt.skills
+	rt.managersMu.RUnlock()
+	am, aerr := agent.NewManager(agent.Dependencies{
+		Config:    newCfg,
+		Reloader:  rt.reloadMgr,
+		Sessions:  rt.sessions,
+		Context:   rt.contextM,
+		Providers: rt.providers,
+		Logger:    rt.logger,
+	})
+	if aerr != nil {
+		return aerr
+	}
+	am.SetSessions(rt.sessions)
+	am.SetTools(tm)
+	am.SetSkills(skm)
+	am.SetMemory(rt.memory)
+	for _, ag := range newCfg.Agents {
+		if _, perr := tm.ToToolDefs(ag.ID, nil); perr != nil {
+			return fmt.Errorf("tool binding for agent %q: %w", ag.ID, perr)
+		}
+	}
+	rt.managersMu.Lock()
+	rt.agents = am
+	rt.managersMu.Unlock()
+	rt.api.SetAgentProvider(am)
+	return nil
+}
+
 // agentExists 判断某 Agent ID 是否在配置中注册。
 func (rt *Runtime) agentExists(agentID string) bool {
 	for _, a := range rt.cfg.Agents {
@@ -515,6 +648,15 @@ func (rt *Runtime) agentSessionOverride(agentID string) *config.SessionOverride 
 		}
 	}
 	return nil
+}
+
+// modelExists 判断指定 provider 下是否存在指定 model（会话级覆盖的存在性校验）。
+// providers 尚未构造时返回 false（调用只发生在 providers 就绪之后）。
+func (rt *Runtime) modelExists(providerID, modelID string) bool {
+	if rt.providers == nil {
+		return false
+	}
+	return rt.providers.HasModel(providerID, modelID)
 }
 
 // agentMemoryOverride 返回某 Agent 的 Memory override（可为 nil）。

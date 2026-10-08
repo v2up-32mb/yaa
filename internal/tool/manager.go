@@ -184,6 +184,67 @@ func (m *Manager) Unregister(name string) error {
 	return nil
 }
 
+// Swap 原子替换（或新增）一个 Tool 实例及其配置与来源标注，在线改配置时
+// 原地刷新 builtin 用：在途执行持有旧实例指针继续完成，新执行拿到新实例。
+// 校验规则与 RegisterWithSource 一致。
+func (m *Manager) Swap(t Tool, source string, cfg config.ToolConfig) error {
+	if _, ok := validToolSources[source]; !ok {
+		return fmt.Errorf("%w: invalid source %q", ErrInvalidToolDef, source)
+	}
+	name := t.Name()
+	if !isValidToolName(name) {
+		return fmt.Errorf("%w: %q", ErrInvalidToolName, name)
+	}
+	if t.Description() == "" {
+		return fmt.Errorf("%w: %q missing description", ErrInvalidToolDef, name)
+	}
+	params := t.Parameters()
+	if !json.Valid(params) {
+		return fmt.Errorf("%w: %q invalid parameters schema", ErrInvalidToolDef, name)
+	}
+	dst := make([]byte, len(params))
+	copy(dst, params)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.tools[name] = t
+	m.configs[name] = cfg
+	m.source[name] = source
+	return nil
+}
+
+// CurrentConfig 返回当前快照指针（只读，调用方不得修改）。
+func (m *Manager) CurrentConfig() *config.Config {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.cfg
+}
+
+// SetConfig 交换配置快照指针（读时字段下次执行即生效）。
+func (m *Manager) SetConfig(cfg *config.Config) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.cfg = cfg
+}
+
+// RefreshAgents 按新 Agent 列表重建 tools allowlist 绑定（在线改配置用）。
+func (m *Manager) RefreshAgents(agents []config.AgentConfig) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	bindings := make(map[string]agentBinding, len(agents))
+	for _, ag := range agents {
+		if len(ag.Tools) == 0 {
+			bindings[ag.ID] = agentBinding{AllowAll: true}
+			continue
+		}
+		set := make(map[string]struct{}, len(ag.Tools))
+		for _, name := range ag.Tools {
+			set[name] = struct{}{}
+		}
+		bindings[ag.ID] = agentBinding{Allowed: set}
+	}
+	m.agents = bindings
+}
+
 func (m *Manager) Get(name string) (Tool, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

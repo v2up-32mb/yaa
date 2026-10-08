@@ -172,6 +172,9 @@ func (m *Manager) finishPlannedTurn(
 		}
 	}
 	if !found {
+		if a.model == "" {
+			return TurnResult{Usage: usage, ToolCallCount: toolCallCount}, fmt.Errorf("agent %q has no model and session has no model override: select a model first", a.id)
+		}
 		return TurnResult{Usage: usage, ToolCallCount: toolCallCount}, fmt.Errorf("agent: model %q not found", a.model)
 	}
 

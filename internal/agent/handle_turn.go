@@ -11,6 +11,7 @@ import (
 	"github.com/v2up-32mb/yaa/internal/config"
 	ctxwindow "github.com/v2up-32mb/yaa/internal/context"
 	mm "github.com/v2up-32mb/yaa/internal/memory"
+	"github.com/v2up-32mb/yaa/internal/planner"
 	"github.com/v2up-32mb/yaa/internal/provider"
 	"github.com/v2up-32mb/yaa/internal/session"
 	"github.com/v2up-32mb/yaa/internal/skill"
@@ -46,10 +47,33 @@ func (m *Manager) HandleTurn(ctx context.Context, agentID string, req TurnReques
 		return TurnResult{}, fmt.Errorf("%w: %s", ErrAgentPaused, agentID)
 	}
 
-	p, perr := m.deps.Providers.Get(a.provider)
-	if perr != nil {
-		return TurnResult{}, fmt.Errorf("agent: provider %q gone: %w", a.provider, perr)
+	// 会话级 provider/model 覆盖（任务 8）：turn 解析优先级为会话覆盖 > Agent 配置。
+	// Sessions 为 nil（部分测试构造）时无覆盖，走 Agent 配置。
+	eff := *a
+	if m.deps.Sessions != nil {
+		if sess, gerr := m.deps.Sessions.Get(ctx, req.SessionID); gerr == nil && sess != nil && sess.Model != nil {
+			if sess.Model.Provider != "" {
+				eff.provider = sess.Model.Provider
+			}
+			if sess.Model.Model != "" {
+				eff.model = sess.Model.Model
+			}
+		}
+		// Get 失败（会话不存在等）不提前报错，由 RunTurn 给出权威错误。
 	}
+
+	p, perr := m.deps.Providers.Get(eff.provider)
+	if perr != nil {
+		return TurnResult{}, fmt.Errorf("agent: provider %q gone: %w", eff.provider, perr)
+	}
+	// 覆盖切换了 provider 且 planner 启用时，用有效 provider 临时构造 planner
+	//（LLMPlanner 只是 provider+cfg 的轻量包装；runner 执行工具，与 provider 无关）。
+	if eff.provider != a.provider && eff.planner != nil {
+		ephem := planner.NewLLMPlanner(p, eff.plannerCfg)
+		ephem.SetLogger(m.deps.Logger)
+		eff.planner = ephem
+	}
+	a = &eff
 
 	var result TurnResult
 	var onQueued func(int)
@@ -183,6 +207,9 @@ func (m *Manager) runDirectTurn(
 			}
 		}
 		if !found {
+			if a.model == "" {
+				return TurnResult{Usage: totalUsage}, fmt.Errorf("agent %q has no model and session has no model override: select a model first", a.id)
+			}
 			return TurnResult{Usage: totalUsage}, fmt.Errorf("agent: model %q not found", a.model)
 		}
 		// currentTurnStart 指向最后一条 user。

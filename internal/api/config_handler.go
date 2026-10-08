@@ -11,8 +11,13 @@ import (
 // 失败 500/50001，不得 fallback 未脱敏 snapshot。
 func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
+	rm := s.reloadMgr
 	cfg := s.cfgSnapshot
 	s.mu.Unlock()
+	// ReloadManager 存在时读 Current()，热更新/在线改配置后不返回陈旧快照。
+	if rm != nil {
+		cfg = rm.Current()
+	}
 	if cfg == nil {
 		s.writeError(w, r, http.StatusServiceUnavailable, 50301, "config snapshot unavailable")
 		return
@@ -23,4 +28,37 @@ func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeOK(w, RequestIDFromContext(r.Context()), http.StatusOK, view)
+}
+
+// handlePutConfigRoute — PUT /api/v1/config（write:config）
+// 在线改配置：全量文档 → *** 密钥合并 → 校验 → 原子落盘 → 重载。
+// 热字段立即生效；结构变更落盘但需重启（返回 restart_required + paths）。
+func (s *Server) handlePutConfigRoute(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	rm := s.reloadMgr
+	s.mu.Unlock()
+	if rm == nil {
+		s.writeError(w, r, http.StatusServiceUnavailable, 50301, "config reload unavailable")
+		return
+	}
+	s.handlePutConfig(w, r, rm)
+}
+
+func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request, rm *config.ReloadManager) {
+	var raw map[string]any
+	if err := decodeBody(r, &raw); err != nil || len(raw) == 0 {
+		s.writeError(w, r, http.StatusBadRequest, 40001, "invalid config document")
+		return
+	}
+	result, err := rm.Update(raw)
+	if err != nil {
+		s.writeError(w, r, http.StatusBadRequest, 40001, err.Error())
+		return
+	}
+	writeOK(w, RequestIDFromContext(r.Context()), http.StatusOK, map[string]any{
+		"applied":          result.Applied,
+		"changed":          result.Changed,
+		"restart_required": result.RestartRequired,
+		"paths":            result.Paths,
+	})
 }

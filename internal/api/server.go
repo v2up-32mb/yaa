@@ -67,6 +67,7 @@ type Server struct {
 	tools            *tool.Manager
 	skills           *skill.Manager
 	cfgSnapshot      *config.Config
+	reloadMgr        *config.ReloadManager
 	providers        *provider.Manager
 	mcpServers       MCPServerProvider
 	memoryProvider   MemoryProvider
@@ -172,6 +173,14 @@ func (s *Server) SetProviderManager(pm *provider.Manager) {
 func (s *Server) SetConfigSnapshot(cfg *config.Config) {
 	s.mu.Lock()
 	s.cfgSnapshot = cfg
+	s.mu.Unlock()
+}
+
+// SetReloadManager 注入 ReloadManager：GET /api/v1/config 优先读 Current()
+// （热更新后不陈旧），PUT /api/v1/config 经它落盘 + 重载。nil 表示未启用。
+func (s *Server) SetReloadManager(rm *config.ReloadManager) {
+	s.mu.Lock()
+	s.reloadMgr = rm
 	s.mu.Unlock()
 }
 

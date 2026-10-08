@@ -46,6 +46,7 @@ func encodeSnapshot(s *Session) ([]byte, error) {
 		},
 		Metadata:    normalizeMap(s.Metadata),
 		UsedTurnIDs: used,
+		Model:       s.Model,
 	}
 	if len(s.Messages) > 0 {
 		snap.Messages = make([]snapshotMessage, len(s.Messages))
@@ -175,6 +176,15 @@ func decodeSnapshot(raw []byte, agentID string) (*Session, error) {
 		return nil, err
 	}
 
+	var model *ModelOverride
+	if snap.Model != nil {
+		if snap.Model.Provider == "" || snap.Model.Model == "" {
+			return nil, fmt.Errorf("%w: model_override must have both provider and model", ErrRestoreFailed)
+		}
+		ov := *snap.Model
+		model = &ov
+	}
+
 	return &Session{
 		ID:             snap.ID,
 		AgentID:        snap.AgentID,
@@ -185,6 +195,7 @@ func decodeSnapshot(raw []byte, agentID string) (*Session, error) {
 		Messages:       msgs,
 		Metadata:       normalizeMap(snap.Metadata),
 		Policy:         policy,
+		Model:          model,
 		SchemaVersion:  snap.SchemaVersion,
 	}, nil
 }

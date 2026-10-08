@@ -93,6 +93,13 @@
             <span class="chat-state" v-if="streaming"><el-icon class="is-loading"><Loading /></el-icon> 生成中…</span>
           </div>
           <div class="chat-head-right" v-if="currentAgent">
+            <el-select v-model="sessionModelKey" placeholder="选择模型" size="small" clearable filterable
+                       :disabled="!currentSession" @change="onModelChange" class="model-select"
+                       :title="effectiveModelLabel || '未选择模型'">
+              <el-option v-for="o in modelOptions" :key="o.value" :label="o.label" :value="o.value" />
+            </el-select>
+            <span class="model-tag" v-if="!sessionModelKey && currentAgent.model">{{ currentAgent.provider }} / {{ currentAgent.model }}（默认）</span>
+            <span class="model-tag warn" v-if="!effectiveModelLabel">未选模型</span>
             <span class="agent-state" :class="currentAgent.status">{{ statusLabel(currentAgent.status) }}</span>
             <span class="usage" v-if="lastUsage">
               <el-icon><DataLine /></el-icon>
@@ -185,32 +192,136 @@
     </div>
 
     <!-- 设置对话框 -->
-    <el-dialog v-model="settingsOpen" title="设置" width="420px" class="settings-dialog">
-      <div class="setting-row">
-        <label>API 地址</label>
-        <el-input v-model="settings.baseURL" placeholder="/（默认同源）" @change="saveSettings">
-          <template #prepend>Base</template>
-        </el-input>
-      </div>
-      <div class="setting-row">
-        <label>Bearer Token</label>
-        <el-input v-model="settings.token" type="password" show-password placeholder="留空 = 不启用认证" @change="saveSettings" />
-      </div>
-      <div class="setting-row">
-        <label>主题</label>
-        <el-segmented v-model="settings.theme" :options="['light', 'dark']" @change="applyTheme" />
-      </div>
-      <el-divider>服务端配置（只读）</el-divider>
-      <p class="setting-tip">查看运行时各配置项的脱敏快照。修改请编辑配置文件后重启（部分字段支持热更新）。</p>
-      <div class="setting-row">
-        <el-button size="small" :loading="serverCfgLoading" @click="loadServerConfig">加载服务端配置</el-button>
-      </div>
-      <div v-if="serverCfgError" class="setting-error">{{ serverCfgError }}</div>
-      <el-collapse v-if="serverCfg" v-model="serverCfgOpen" class="cfg-collapse">
-        <el-collapse-item v-for="(v, k) in serverCfg" :key="k" :title="k" :name="k">
-          <pre class="cfg-pre">{{ prettyCfg(v) }}</pre>
-        </el-collapse-item>
-      </el-collapse>
+    <el-dialog v-model="settingsOpen" title="设置" width="640px" class="settings-dialog" @open="ensureServerCfg">
+      <el-tabs v-model="cfgTab">
+        <el-tab-pane label="连接" name="conn">
+          <div class="setting-row">
+            <label>API 地址</label>
+            <el-input v-model="settings.baseURL" placeholder="/（默认同源）" @change="saveSettings">
+              <template #prepend>Base</template>
+            </el-input>
+          </div>
+          <div class="setting-row">
+            <label>Bearer Token</label>
+            <el-input v-model="settings.token" type="password" show-password placeholder="留空 = 不启用认证" @change="saveSettings" />
+          </div>
+          <div class="setting-row">
+            <label>主题</label>
+            <el-segmented v-model="settings.theme" :options="['light', 'dark']" @change="applyTheme" />
+          </div>
+          <div class="setting-row">
+            <label>日志级别（立即生效）</label>
+            <div class="row-inline">
+              <el-segmented v-model="cfgLogLevel" :options="['debug', 'info', 'warn', 'error']" />
+              <el-button size="small" :loading="cfgSaving" @click="saveLogLevel">应用</el-button>
+            </div>
+          </div>
+        </el-tab-pane>
+        <el-tab-pane label="模型提供商" name="providers">
+          <p class="setting-tip">新增提供商（含模型）保存后即生效，无需重启。密钥用 <code>${ENV}</code> 引用，禁止明文。</p>
+          <div class="setting-row">
+            <el-button size="small" type="primary" @click="openProvForm(null)" :disabled="!serverCfg">新增提供商</el-button>
+            <el-button size="small" :loading="serverCfgLoading" @click="loadServerConfig">刷新</el-button>
+          </div>
+          <div v-if="serverCfgError" class="setting-error">{{ serverCfgError }}</div>
+          <el-table v-if="serverCfg" :data="cfgProviders" size="small" class="cfg-table">
+            <el-table-column prop="id" label="ID" />
+            <el-table-column prop="type" label="类型" width="110" />
+            <el-table-column prop="base_url" label="地址" />
+            <el-table-column label="模型" width="180">
+              <template #default="scope">{{ (scope.row.models || []).map(m => m.id).join(', ') }}</template>
+            </el-table-column>
+            <el-table-column label="操作" width="140">
+              <template #default="scope">
+                <el-button size="small" text type="primary" @click="openProvForm(scope.row)">编辑</el-button>
+                <el-button size="small" text type="danger" @click="deleteProvider(scope.row)">删除</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <el-dialog v-model="provFormOpen" :title="provEditingId ? '编辑提供商' : '新增提供商'" width="520px" append-to-body>
+            <el-form :model="provForm" label-width="90px" size="small">
+              <el-form-item label="ID"><el-input v-model="provForm.id" :disabled="!!provEditingId" placeholder="如 my-gateway" /></el-form-item>
+              <el-form-item label="类型">
+                <el-select v-model="provForm.type">
+                  <el-option value="openai" label="openai（含兼容网关）" />
+                  <el-option value="claude" label="claude" />
+                  <el-option value="gemini" label="gemini" />
+                  <el-option value="ollama" label="ollama（免 key）" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="地址"><el-input v-model="provForm.base_url" placeholder="http://127.0.0.1:11434" /></el-form-item>
+              <el-form-item label="密钥">
+                <el-input v-model="provForm.api_key" type="password" show-password :placeholder="provEditingId ? '*** = 保持不变' : '${ENV} 引用（ollama 可空）'" />
+              </el-form-item>
+              <el-form-item label="超时"><el-input v-model="provForm.timeout" placeholder="60s" /></el-form-item>
+              <el-form-item label="模型">
+                <el-input v-model="provForm.modelsText" type="textarea" :rows="3" placeholder="每行：模型ID, 上下文窗口, 最大输出&#10;如：qwen2.5:7b, 32768, 8192" />
+              </el-form-item>
+            </el-form>
+            <template #footer>
+              <el-button size="small" @click="provFormOpen = false">取消</el-button>
+              <el-button size="small" type="primary" :loading="cfgSaving" @click="saveProvider">保存</el-button>
+            </template>
+          </el-dialog>
+        </el-tab-pane>
+        <el-tab-pane label="Agents" name="agents">
+          <p class="setting-tip">Agent 可留空模型，对话时再选。model 为空的 Agent 建会话后须先选模型才能发送。</p>
+          <div class="setting-row">
+            <el-button size="small" type="primary" @click="openAgentForm(null)" :disabled="!serverCfg">新增 Agent</el-button>
+            <el-button size="small" :loading="serverCfgLoading" @click="loadServerConfig">刷新</el-button>
+          </div>
+          <div v-if="serverCfgError" class="setting-error">{{ serverCfgError }}</div>
+          <el-table v-if="serverCfg" :data="cfgAgents" size="small" class="cfg-table">
+            <el-table-column prop="id" label="ID" />
+            <el-table-column prop="name" label="名称" />
+            <el-table-column prop="provider" label="提供商" width="120" />
+            <el-table-column prop="model" label="默认模型" width="150" />
+            <el-table-column label="操作" width="140">
+              <template #default="scope">
+                <el-button size="small" text type="primary" @click="openAgentForm(scope.row)">编辑</el-button>
+                <el-button size="small" text type="danger" @click="deleteAgent(scope.row)">删除</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <el-dialog v-model="agentFormOpen" :title="agentEditingId ? '编辑 Agent' : '新增 Agent'" width="520px" append-to-body>
+            <el-form :model="agentForm" label-width="90px" size="small">
+              <el-form-item label="ID"><el-input v-model="agentForm.id" :disabled="!!agentEditingId" placeholder="如 assistant" /></el-form-item>
+              <el-form-item label="名称"><el-input v-model="agentForm.name" placeholder="如 我的助手" /></el-form-item>
+              <el-form-item label="提供商">
+                <el-select v-model="agentForm.provider" placeholder="选择提供商">
+                  <el-option v-for="p in cfgProviders" :key="p.id" :label="p.id" :value="p.id" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="默认模型">
+                <el-select v-model="agentForm.model" placeholder="可空，对话时再选" clearable filterable allow-create>
+                  <el-option v-for="m in agentModelsFor(agentForm.provider)" :key="m" :label="m" :value="m" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="max_tokens"><el-input-number v-model="agentForm.max_tokens" :min="1" /></el-form-item>
+              <el-form-item label="temperature"><el-input v-model="agentForm.temperature" placeholder="空=模型默认，0~2" /></el-form-item>
+              <el-form-item label="系统提示"><el-input v-model="agentForm.system_prompt" type="textarea" :rows="3" /></el-form-item>
+            </el-form>
+            <template #footer>
+              <el-button size="small" @click="agentFormOpen = false">取消</el-button>
+              <el-button size="small" type="primary" :loading="cfgSaving" @click="saveAgent">保存</el-button>
+            </template>
+          </el-dialog>
+        </el-tab-pane>
+        <el-tab-pane label="服务端配置" name="server">
+          <p class="setting-tip">运行时各配置项的脱敏快照（只读）。结构性改动保存后需重启，页面会明确提示。</p>
+          <div class="setting-row">
+            <el-button size="small" :loading="serverCfgLoading" @click="loadServerConfig">加载服务端配置</el-button>
+          </div>
+          <div v-if="serverCfgError" class="setting-error">{{ serverCfgError }}</div>
+          <el-collapse v-if="serverCfg" v-model="serverCfgOpen" class="cfg-collapse">
+            <el-collapse-item v-for="(v, k) in serverCfg" :key="k" :title="k" :name="k">
+              <pre class="cfg-pre">{{ prettyCfg(v) }}</pre>
+            </el-collapse-item>
+          </el-collapse>
+        </el-tab-pane>
+      </el-tabs>
+      <div v-if="cfgSaveResult && cfgSaveResult.restart_required" class="setting-error">以下改动已写入文件，需重启生效：{{ (cfgSaveResult.paths || []).join(', ') }}</div>
+      <div v-if="cfgSaveResult && cfgSaveResult.error" class="setting-error">{{ cfgSaveResult.error }}</div>
       <template #footer>
         <el-button size="small" @click="settingsOpen = false">关闭</el-button>
         <el-button size="small" type="primary" @click="saveAndReconnect()">保存并重连</el-button>

@@ -18,53 +18,10 @@ import (
 // disabled Tool 仍 Register（保留在 List 中以保持 Enabled 语义），文档 §3 注册说明：无论
 // cfg.Enabled 为何都写入注册表。
 func RegisterBuiltin(m *tool.Manager, cfg *config.Config) error {
-	// 容器名 -> 由它取数的 canonical 工具名；壳（如 file、git、process）不是工具本身。
-	sharedContainer := func(name string) (string, bool) {
-		switch name {
-		case "file_read", "file_write", "file_list", "file_delete":
-			return "file", true
-		case "git_status", "git_diff", "git_log", "git_branch", "git_add", "git_restore", "git_commit", "git_switch", "git_pull":
-			return "git", true
-		case "process_start", "process_list", "process_logs", "process_stop":
-			return "process", true
-		}
-		return "", false
-	}
-	regs := []struct {
-		canonical string
-		ctor      func(config.ToolConfig) (tool.Tool, error)
-	}{
-		{"shell", func(c config.ToolConfig) (tool.Tool, error) { return NewShell(c) }},
-		{"http", func(c config.ToolConfig) (tool.Tool, error) { return NewHTTP(c) }},
-		{"file_read", func(c config.ToolConfig) (tool.Tool, error) { return NewFileRead(c) }},
-		{"file_write", func(c config.ToolConfig) (tool.Tool, error) { return NewFileWrite(c) }},
-		{"file_list", func(c config.ToolConfig) (tool.Tool, error) { return NewFileList(c) }},
-		{"file_delete", func(c config.ToolConfig) (tool.Tool, error) { return NewFileDelete(c) }},
-		{"file_search", func(c config.ToolConfig) (tool.Tool, error) { return NewSearch(c) }},
-		{"git_status", func(c config.ToolConfig) (tool.Tool, error) { return NewGit("status", c) }},
-		{"git_diff", func(c config.ToolConfig) (tool.Tool, error) { return NewGit("diff", c) }},
-		{"git_log", func(c config.ToolConfig) (tool.Tool, error) { return NewGit("log", c) }},
-		{"git_branch", func(c config.ToolConfig) (tool.Tool, error) { return NewGit("branch", c) }},
-		{"git_add", func(c config.ToolConfig) (tool.Tool, error) { return NewGit("add", c) }},
-		{"git_restore", func(c config.ToolConfig) (tool.Tool, error) { return NewGit("restore", c) }},
-		{"git_commit", func(c config.ToolConfig) (tool.Tool, error) { return NewGit("commit", c) }},
-		{"git_switch", func(c config.ToolConfig) (tool.Tool, error) { return NewGit("switch", c) }},
-		{"git_pull", func(c config.ToolConfig) (tool.Tool, error) { return NewGit("pull", c) }},
-		{"process_start", func(c config.ToolConfig) (tool.Tool, error) { return NewProcessTool("start", c) }},
-		{"process_list", func(c config.ToolConfig) (tool.Tool, error) { return NewProcessTool("list", c) }},
-		{"process_logs", func(c config.ToolConfig) (tool.Tool, error) { return NewProcessTool("logs", c) }},
-		{"process_stop", func(c config.ToolConfig) (tool.Tool, error) { return NewProcessTool("stop", c) }},
-	}
 	// 文档规范：file_* 共享 file 容器配置；git_* 共享 git；process_* 共享 process；
-	// shell/http/file_search/config_query 取同名 key。
-	for _, r := range regs {
-		container, shared := sharedContainer(r.canonical)
-		var tc config.ToolConfig
-		if shared {
-			tc = cfg.Tools.Builtin[container]
-		} else {
-			tc = cfg.Tools.Builtin[r.canonical]
-		}
+	// shell/http/file_search/config_query 取同名 key。构造表见 builtinTable（与刷新共用）。
+	for _, r := range builtinTable() {
+		tc := effectiveBuiltinConfig(cfg.Tools, r.canonical)
 		t, err := r.ctor(tc)
 		if err != nil {
 			return fmt.Errorf("tool: construct builtin %q: %w", r.canonical, err)

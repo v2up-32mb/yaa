@@ -260,6 +260,9 @@ providers:
   - id: p1
     type: openai
     api_key: ${FAKE_API_KEY}
+    models:
+      - {id: m1, context_window: 128000, max_output: 16384}
+      - {id: m2, context_window: 128000, max_output: 16384}
 `
 	p := writeTempConfig(t, base)
 	t.Setenv("FAKE_API_KEY", "k1")
@@ -293,6 +296,9 @@ providers:
   - id: p1
     type: openai
     api_key: ${FAKE_API_KEY}
+    models:
+      - {id: m1, context_window: 128000, max_output: 16384}
+      - {id: m2, context_window: 128000, max_output: 16384}
 `
 	if err := os.WriteFile(p, []byte(updated), 0o600); err != nil {
 		t.Fatal(err)
@@ -319,7 +325,8 @@ providers:
 	}
 }
 
-// TestReloadAgentAddIsRestartRequired 覆盖 agents 数组新增/删除 → restart.
+// TestReloadAgentAddIsRestartRequired 覆盖 agents 数组新增/删除 → 热生效
+// （读时配置：Runtime 重建 agent 绑定交换）。
 func TestReloadAgentAddIsRestartRequired(t *testing.T) {
 	isolateWorkDir(t)
 	base := `config_version: "1.0"
@@ -336,6 +343,9 @@ providers:
   - id: p1
     type: openai
     api_key: ${FAKE_API_KEY}
+    models:
+      - {id: m1, context_window: 128000, max_output: 16384}
+      - {id: m2, context_window: 128000, max_output: 16384}
 `
 	p := writeTempConfig(t, base)
 	t.Setenv("FAKE_API_KEY", "k1")
@@ -364,6 +374,9 @@ providers:
   - id: p1
     type: openai
     api_key: ${FAKE_API_KEY}
+    models:
+      - {id: m1, context_window: 128000, max_output: 16384}
+      - {id: m2, context_window: 128000, max_output: 16384}
 `
 	if err := os.WriteFile(p, []byte(updated), 0o600); err != nil {
 		t.Fatal(err)
@@ -372,12 +385,12 @@ providers:
 	if err != nil {
 		t.Fatalf("Reload: %v", err)
 	}
-	if result.Applied || !result.RestartRequired || len(result.Paths) == 0 {
-		t.Fatalf("agent add must be restart-required, got %+v", result)
+	if !result.Applied || result.RestartRequired {
+		t.Fatalf("agent add must be hot-applied, got %+v", result)
 	}
-	// 旧 snapshot 保留: 只有 1 个 agent
-	if len(m.Current().Agents) != 1 {
-		t.Fatalf("Current Agents len should remain 1, got %d", len(m.Current().Agents))
+	// 新 snapshot 生效: 2 个 agent
+	if len(m.Current().Agents) != 2 {
+		t.Fatalf("Current Agents len should be 2, got %d", len(m.Current().Agents))
 	}
 }
 
@@ -397,25 +410,32 @@ func TestNormalizeArrayIndexPath(t *testing.T) {
 }
 
 func TestPathIsHotReloadable(t *testing.T) {
-	allowlist := []string{
+	// 读时生效：缺席于重启集合即热生效。
+	hot := []string{
 		"log.level", "agents.model", "agents.system_prompt",
-		"agents.max_tokens", "agents.temperature",
-		"tools.default_timeout", "tools.max_timeout",
+		"agents.max_tokens", "agents.temperature", "agents.id", "agents.provider",
+		"agents.tools", "agents", "providers", "providers.api_key",
+		"tools.default_timeout", "tools.max_timeout", "tools.max_concurrent",
+		"tools.builtin.options", "skills.dir", "skills.per_skill",
 		"session.max_messages", "session.ttl", "agents.session",
-		"context", "agents.context",
+		"context", "agents.context", "runtime.auth",
 		"memory.max_items", "memory.expire_interval",
 	}
-	deny := []string{
-		"log.format", "runtime.storage.type", "providers.api_key",
-		"agents.id", "agents.provider", "agents.tools",
-		"tools.max_concurrent", "plugins.paths", "mcp.servers",
+	// 持续性状态：数据库文件、监听端口、日志文件句柄、子进程、长连接、索引管线。
+	restart := []string{
+		"log.format", "log.output",
+		"runtime.storage.type", "runtime.storage.path",
+		"runtime.api.http.addr",
+		"memory.enabled", "memory.storage.path",
+		"memory.embedding.provider", "memory.vector.enabled",
+		"plugins.paths", "mcp.servers",
 	}
-	for _, p := range allowlist {
+	for _, p := range hot {
 		if !pathIsHotReloadable(p) {
 			t.Errorf("pathIsHotReloadable(%q) = false, want true", p)
 		}
 	}
-	for _, p := range deny {
+	for _, p := range restart {
 		if pathIsHotReloadable(p) {
 			t.Errorf("pathIsHotReloadable(%q) = true, want false", p)
 		}
@@ -469,7 +489,8 @@ func TestReloadPluginsAnyFieldIsRestartRequired(t *testing.T) {
 	}
 }
 
-// TestReloadSkillsDirIsRestartRequired 覆盖 skills.dir 变化 restart-required.
+// TestReloadSkillsDirIsRestartRequired 覆盖 skills.dir 变化 → 热生效
+// （Runtime 重扫 skills 交换）。
 // docs/skill/config.md §72: skills.dir, per_skill, agents[].skills, agents[].skills_config 全 restart-required.
 func TestReloadSkillsDirIsRestartRequired(t *testing.T) {
 	m, p := newTestReloadManager(t, nil)
@@ -488,24 +509,24 @@ func TestReloadSkillsDirIsRestartRequired(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Reload: %v", err)
 	}
-	if result.Applied || !result.RestartRequired {
-		t.Fatalf("skills.dir change must be restart-required, got %+v", result)
+	if !result.Applied || result.RestartRequired {
+		t.Fatalf("skills.dir change must be hot-applied, got %+v", result)
 	}
-	// Paths 至少含 skills.* 路径
+	// Changed 含 skills.dir（热生效结果的 Paths 为空）。
 	found := false
-	for _, path := range result.Paths {
-		if len(path) >= len("skills") && path[:len("skills")] == "skills" {
+	for _, path := range result.Changed {
+		if path == "skills.dir" {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Fatalf("Paths should include skills.* , got %+v", result.Paths)
+		t.Fatalf("Changed should include skills.dir, got %+v", result.Changed)
 	}
 }
 
-// TestReloadSkillsPerSkillOptionsIsRestartRequired 覆盖 skills.per_skill.<name>.options 也 restart-required,
-// 不像 tools.builtin.<name>.options 那样在 allowlist.
+// TestReloadSkillsPerSkillOptionsIsRestartRequired 覆盖 skills.per_skill.<name>.options
+// 也热生效（与 tools.builtin.<name>.options 同为读时配置）。
 func TestReloadSkillsPerSkillOptionsIsRestartRequired(t *testing.T) {
 	m, p := newTestReloadManager(t, nil)
 	newContent := minimalValidYAML + "skills:\n  per_skill:\n    translator:\n      enabled: true\n      options:\n        lang: en\n"
@@ -517,7 +538,7 @@ func TestReloadSkillsPerSkillOptionsIsRestartRequired(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Reload: %v", err)
 	}
-	if result.Applied || !result.RestartRequired {
-		t.Fatalf("skills.per_skill.<name>.options change must be restart-required, got %+v", result)
+	if !result.Applied || result.RestartRequired {
+		t.Fatalf("skills.per_skill.<name>.options change must be hot-applied, got %+v", result)
 	}
 }

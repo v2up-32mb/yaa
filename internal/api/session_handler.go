@@ -61,6 +61,16 @@ func (s *Server) handleGetSessionRoute(w http.ResponseWriter, r *http.Request) {
 	s.handleGetSession(w, r, sp, pathVar(r, "id"))
 }
 
+// handleSetSessionModelRoute — POST /api/v1/sessions/{id}/model（write:sessions）
+// 对话中切换模型：设置会话级 provider/model 覆盖；二者同时为空表示清除。
+func (s *Server) handleSetSessionModelRoute(w http.ResponseWriter, r *http.Request) {
+	sp, ok := s.sessionProvider(w, r)
+	if !ok {
+		return
+	}
+	s.handleSetSessionModel(w, r, sp, pathVar(r, "id"))
+}
+
 // handlePauseSessionRoute — POST /api/v1/sessions/{id}/pause（write:sessions）
 func (s *Server) handlePauseSessionRoute(w http.ResponseWriter, r *http.Request) {
 	sp, ok := s.sessionProvider(w, r)
@@ -161,10 +171,19 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request, sp 
 		s.writeError(w, r, http.StatusBadRequest, 40001, "invalid request body")
 		return
 	}
+	var model *session.ModelOverride
+	if req.Provider != "" || req.Model != "" {
+		if req.Provider == "" || req.Model == "" {
+			s.writeError(w, r, http.StatusBadRequest, 40001, "provider and model must both be set")
+			return
+		}
+		model = &session.ModelOverride{Provider: req.Provider, Model: req.Model}
+	}
 	sessReq := session.CreateRequest{
 		AgentID:  agentID,
 		Policy:   req.Policy,
 		Metadata: req.Metadata,
+		Model:    model,
 	}
 	sess, err := sp.Create(r.Context(), sessReq)
 	if err != nil {
@@ -172,6 +191,28 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request, sp 
 		return
 	}
 	writeOK(w, RequestIDFromContext(r.Context()), http.StatusCreated, toSessionDTO(sess))
+}
+
+func (s *Server) handleSetSessionModel(w http.ResponseWriter, r *http.Request, sp SessionProvider, sessionID string) {
+	var req setSessionModelRequest
+	if err := decodeBody(r, &req); err != nil {
+		s.writeError(w, r, http.StatusBadRequest, 40001, "invalid request body")
+		return
+	}
+	var ov *session.ModelOverride
+	if req.Provider != "" || req.Model != "" {
+		if req.Provider == "" || req.Model == "" {
+			s.writeError(w, r, http.StatusBadRequest, 40001, "provider and model must both be set")
+			return
+		}
+		ov = &session.ModelOverride{Provider: req.Provider, Model: req.Model}
+	}
+	sess, err := sp.SetModel(r.Context(), sessionID, ov)
+	if err != nil {
+		s.writeSessionError(w, r, err)
+		return
+	}
+	writeOK(w, RequestIDFromContext(r.Context()), http.StatusOK, toSessionDTO(sess))
 }
 
 func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request, sp SessionProvider, agentID string) {
@@ -355,7 +396,7 @@ func (s *Server) writeSessionError(w http.ResponseWriter, r *http.Request, err e
 		s.writeError(w, r, http.StatusConflict, 40901, "state not allowed")
 		return
 	}
-	if errors.Is(err, session.ErrInvalidMessage) || errors.Is(err, session.ErrSessionConfigInvalid) || errors.Is(err, session.ErrInvalidTurnID) || errors.Is(err, session.ErrTurnIDConflict) {
+	if errors.Is(err, session.ErrInvalidMessage) || errors.Is(err, session.ErrSessionConfigInvalid) || errors.Is(err, session.ErrInvalidTurnID) || errors.Is(err, session.ErrTurnIDConflict) || errors.Is(err, session.ErrInvalidModelOverride) {
 		s.writeError(w, r, http.StatusBadRequest, 40001, "invalid request")
 		return
 	}

@@ -27,7 +27,7 @@
 | [memory.md](memory.md) | Memory | 7 |
 | [mcp.md](mcp.md) | MCP 连接状态 | 2 |
 | [auth.md](auth.md) | Bearer/RBAC 协议 | 0 |
-| **合计** | **10 模块** | **37** |
+| **合计** | **10 模块** | **39** |
 
 ## 3. 路由总表
 
@@ -38,6 +38,7 @@
 | GET | `/api/v1/health` | public by default; otherwise `read:system` | 健康与 readiness |
 | GET | `/api/v1/version` | public by default; otherwise `read:system` | 构建版本 |
 | GET | `/api/v1/config` | `read:config` | 当前脱敏 Config |
+| PUT | `/api/v1/config` | `write:config` | 在线改配置（全量文档；热字段立即生效，结构变更需重启） |
 
 ### 3.2 Agent
 
@@ -61,6 +62,7 @@
 | POST | `/api/v1/sessions/:id/close` | `write:sessions` | 关闭并保留历史 |
 | DELETE | `/api/v1/sessions/:id` | `delete:sessions` | 物理删除 |
 | POST | `/api/v1/sessions/:id/clear` | `write:sessions` | 清空消息 |
+| POST | `/api/v1/sessions/:id/model` | `write:sessions` | 设置/清除会话级模型覆盖 |
 | GET | `/api/v1/sessions/:id/messages` | `read:sessions` | 查询消息 |
 | DELETE | `/api/v1/sessions/:id/messages/:msgid` | `delete:sessions` | 原子删除消息或 Tool unit |
 

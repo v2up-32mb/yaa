@@ -23,6 +23,8 @@ type SessionProvider interface {
 	DeleteMessage(ctx context.Context, sessionID, messageID string) ([]string, error)
 	ClearMessages(ctx context.Context, sessionID string) (int, error)
 	ListMessages(ctx context.Context, sessionID string, q session.ListMessagesQuery) ([]session.SessionMessage, int, error)
+	// SetModel 设置/清除会话级 provider/model 覆盖（nil 清除）。
+	SetModel(ctx context.Context, sessionID string, ov *session.ModelOverride) (*session.Session, error)
 }
 
 // AgentExistsProvider 由 Runtime/Agent Manager 实现，注入到 API Server。
@@ -30,6 +32,12 @@ type SessionProvider interface {
 type AgentExistsProvider interface {
 	AgentExists(agentID string) bool
 	AgentSessionOverride(agentID string) *config.SessionOverride
+}
+
+// sessionModelDTO 是会话级 provider/model 覆盖的 REST 表示；nil 表示无覆盖。
+type sessionModelDTO struct {
+	Provider string `json:"provider"`
+	Model    string `json:"model"`
 }
 
 // sessionDTO 是 Session REST 响应的 JSON 表示。
@@ -40,6 +48,7 @@ type sessionDTO struct {
 	MessageCount   int              `json:"message_count"`
 	Metadata       map[string]any   `json:"metadata"`
 	Policy         sessionPolicyDTO `json:"policy"`
+	Model          *sessionModelDTO `json:"model,omitempty"`
 	CreatedAt      string           `json:"created_at"`
 	UpdatedAt      string           `json:"updated_at"`
 	LastActivityAt string           `json:"last_activity_at"`
@@ -91,19 +100,34 @@ type messageDTO struct {
 }
 
 // createSessionRequest 是 POST /agents/:id/sessions 的入参。
+// provider/model 二者同时非空时作为会话级覆盖；都不填表示无覆盖。
 type createSessionRequest struct {
 	Metadata map[string]any          `json:"metadata"`
 	Policy   *config.SessionOverride `json:"policy"`
+	Provider string                  `json:"provider"`
+	Model    string                  `json:"model"`
+}
+
+// setSessionModelRequest 是 POST /sessions/:id/model 的入参。
+// provider 与 model 同时为空表示清除覆盖，回到 Agent 配置。
+type setSessionModelRequest struct {
+	Provider string `json:"provider"`
+	Model    string `json:"model"`
 }
 
 // toSessionDTO 把内部 Session 转为 REST DTO。
 func toSessionDTO(s *session.Session) sessionDTO {
+	var model *sessionModelDTO
+	if s.Model != nil {
+		model = &sessionModelDTO{Provider: s.Model.Provider, Model: s.Model.Model}
+	}
 	return sessionDTO{
 		ID:           s.ID,
 		AgentID:      s.AgentID,
 		State:        string(s.State),
 		MessageCount: len(s.Messages),
 		Metadata:     s.Metadata,
+		Model:        model,
 		Policy: sessionPolicyDTO{
 			MaxMessages:     s.Policy.MaxMessages,
 			MaxMessageBytes: s.Policy.MaxMessageBytes,
