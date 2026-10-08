@@ -18,8 +18,9 @@ func TestDefaultConfigUsesCanonicalValues(t *testing.T) {
 		t.Fatalf("empty root slices = %#v/%#v, want non-nil empty slices", cfg.Agents, cfg.Providers)
 	}
 
-	if got := cfg.Runtime.Storage; got != (StorageConfig{Type: "sqlite", Path: "./data/yaa.db"}) {
-		t.Errorf("runtime.storage = %#v", got)
+	// 默认路径收敛到默认工作目录（~/yaa），避免不同 cwd 启动使用不同数据。
+	if got := cfg.Runtime.Storage; got != (StorageConfig{Type: "sqlite", Path: DefaultStoragePath()}) {
+		t.Errorf("runtime.storage = %#v, want path %q", got, DefaultStoragePath())
 	}
 	if got := cfg.Runtime.API.HTTP; got != (HTTPConfig{
 		Addr: "127.0.0.1:8080", ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, MaxHeaderBytes: 1048576,
@@ -51,7 +52,7 @@ func TestDefaultConfigUsesCanonicalValues(t *testing.T) {
 
 	if got := cfg.Memory; got.Enabled != true || got.MaxItems != 10000 || got.ExpireInterval != 5*time.Minute ||
 		got.ExpireBatchSize != 500 || got.EvictionPolicy != "fifo" || got.Storage.Type != "sqlite" ||
-		got.Storage.Path != "./data/yaa-memory.db" || got.Vector.SimilarityThreshold != 0.7 || got.Vector.TopK != 10 ||
+		got.Storage.Path != DefaultMemoryStoragePath() || got.Vector.SimilarityThreshold != 0.7 || got.Vector.TopK != 10 ||
 		!got.Vector.FallbackToKeyword || got.Embedding.Provider != "openai-compatible" || got.Embedding.Timeout != 30*time.Second {
 		t.Errorf("memory defaults = %#v", got)
 	}
@@ -68,7 +69,7 @@ func TestDefaultConfigUsesCanonicalValues(t *testing.T) {
 		got.MaxTokens != 2048 || got.MaxSteps != 16 || got.MaxConcurrent != 4 || got.Timeout != 30*time.Second {
 		t.Errorf("planner defaults = %#v", got)
 	}
-	if got := cfg.Plugins; !reflect.DeepEqual(got.Paths, []string{"./plugins"}) || !got.AutoStart ||
+	if got := cfg.Plugins; !reflect.DeepEqual(got.Paths, []string{DefaultPluginsDir()}) || !got.AutoStart ||
 		got.StartupTimeout != 30*time.Second || got.StopTimeout != 10*time.Second || got.HealthInterval != 30*time.Second ||
 		got.HealthTimeout != 5*time.Second || !got.Restart.Enabled || got.Restart.MaxAttempts != 3 || got.Restart.Backoff != time.Second {
 		t.Errorf("plugin defaults = %#v", got)
@@ -92,10 +93,10 @@ func TestDefaultConstructorsReturnFreshContainers(t *testing.T) {
 	if len(two.Agents) != 0 || len(two.MCP.Servers) != 0 || len(two.MCP.Server.ExposedTools) != 0 {
 		t.Fatal("Default reused slice backing storage")
 	}
-	if got := two.Tools.Builtin["shell"].Options["working_dir"]; got != "." {
+	if got := two.Tools.Builtin["shell"].Options["working_dir"]; got != WorkDir() {
 		t.Fatalf("shell options leaked between defaults: %v", got)
 	}
-	if got := two.Plugins.Paths[0]; got != "./plugins" {
+	if got := two.Plugins.Paths[0]; got != DefaultPluginsDir() {
 		t.Fatalf("plugin paths leaked between defaults: %q", got)
 	}
 }
@@ -143,7 +144,7 @@ func assertDefaultBuiltinConfig(t *testing.T, tools ToolsConfig) {
 			t.Errorf("builtin[%q] = %#v, want enabled with non-nil options", key, item)
 		}
 	}
-	if got := tools.Builtin["shell"]; got.Timeout != 30*time.Second || got.Options["working_dir"] != "." || got.Options["max_output_bytes"] != 65536 {
+	if got := tools.Builtin["shell"]; got.Timeout != 30*time.Second || got.Options["working_dir"] != WorkDir() || got.Options["max_output_bytes"] != 65536 {
 		t.Errorf("shell defaults = %#v", got)
 	}
 	if got := tools.Builtin["http"]; got.Timeout != 30*time.Second || got.Options["max_redirects"] != 5 || got.Options["max_response_bytes"] != 1048576 {

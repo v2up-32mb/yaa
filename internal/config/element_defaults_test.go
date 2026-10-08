@@ -98,7 +98,7 @@ func TestApplyElementDefaultsFillsConfiguredElements(t *testing.T) {
 	assertEqual(t, shell["timeout"], "30s", "shell timeout")
 	options := shell["options"].(map[string]any)
 	assertEqual(t, options["max_output_bytes"], 0, "explicit shell max_output_bytes")
-	assertEqual(t, options["working_dir"], ".", "shell working_dir")
+	assertEqual(t, options["working_dir"], WorkDir(), "shell working_dir")
 	assertEqual(t, options["allowed_commands"], []any{}, "shell allowed_commands")
 	assertEqual(t, options["env"], map[string]any{}, "shell env")
 	query := raw["tools"].(map[string]any)["builtin"].(map[string]any)["config_query"].(map[string]any)

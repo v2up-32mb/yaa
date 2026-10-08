@@ -35,6 +35,7 @@ runtime:
 // newTestReloadManager 用 minimalValidYAML 构造已 Activate 的 ReloadManager.
 func newTestReloadManager(t *testing.T, validateBindings func(*Config) error) (*ReloadManager, string) {
 	t.Helper()
+	isolateWorkDir(t)
 	p := writeTempConfig(t, minimalValidYAML)
 	initial, err := Load(p, nil)
 	if err != nil {
@@ -51,12 +52,14 @@ func newTestReloadManager(t *testing.T, validateBindings func(*Config) error) (*
 }
 
 func TestReloadNewRejectsNil(t *testing.T) {
+	isolateWorkDir(t)
 	if _, err := NewReloadManager(nil, "x", nil, nil); err == nil {
 		t.Fatal("expected error for nil initial")
 	}
 }
 
 func TestReloadBeforeActivateReturnsNotActive(t *testing.T) {
+	isolateWorkDir(t)
 	p := writeTempConfig(t, minimalValidYAML)
 	initial, _ := Load(p, nil)
 	m, _ := NewReloadManager(initial, p, nil, nil)
@@ -75,6 +78,7 @@ func TestReloadCurrentReturnsInitial(t *testing.T) {
 }
 
 func TestReloadFlagsDeepCopied(t *testing.T) {
+	isolateWorkDir(t)
 	p := writeTempConfig(t, minimalValidYAML)
 	initial, _ := Load(p, nil)
 	flags := map[string]any{"log.level": "debug"}
@@ -140,9 +144,9 @@ runtime:
 	if result.Applied || !result.RestartRequired || len(result.Paths) == 0 {
 		t.Fatalf("want Applied=false/RestartRequired=true/Paths non-empty, got %+v", result)
 	}
-	// 旧 snapshot 应保持不变: Default() 默认 path = "./data/yaa.db", 候选 path = /tmp/yaa.sqlite
-	if cur := m.Current(); cur.Runtime.Storage.Path != "./data/yaa.db" {
-		t.Fatalf("Current after restart-required should keep old, Storage.Path = %q want ./data/yaa.db", cur.Runtime.Storage.Path)
+	// 旧 snapshot 应保持不变: Default() 默认 path = 工作目录/data/yaa.db, 候选 path = /tmp/yaa.sqlite
+	if cur := m.Current(); cur.Runtime.Storage.Path != DefaultStoragePath() {
+		t.Fatalf("Current after restart-required should keep old, Storage.Path = %q want %q", cur.Runtime.Storage.Path, DefaultStoragePath())
 	}
 }
 
@@ -176,7 +180,7 @@ log:
 		t.Fatalf("Current Log.Level should remain default info, got %q", cur.Log.Level)
 	}
 	// runtime.storage.path 也应保持 default
-	if cur := m.Current(); cur.Runtime.Storage.Path != "./data/yaa.db" {
+	if cur := m.Current(); cur.Runtime.Storage.Path != DefaultStoragePath() {
 		t.Fatalf("Current Storage.Path should remain default, got %q", cur.Runtime.Storage.Path)
 	}
 }
@@ -237,6 +241,7 @@ func TestReloadLoadFailureKeepsOld(t *testing.T) {
 
 // TestReloadAgentModelHotReloadable 覆盖 agents[].model 路径规范化和 allowlist 判定.
 func TestReloadAgentModelHotReloadable(t *testing.T) {
+	isolateWorkDir(t)
 	base := `config_version: "1.0"
 runtime:
   storage: {}
@@ -316,6 +321,7 @@ providers:
 
 // TestReloadAgentAddIsRestartRequired 覆盖 agents 数组新增/删除 → restart.
 func TestReloadAgentAddIsRestartRequired(t *testing.T) {
+	isolateWorkDir(t)
 	base := `config_version: "1.0"
 runtime:
   storage: {}
@@ -467,7 +473,7 @@ func TestReloadPluginsAnyFieldIsRestartRequired(t *testing.T) {
 // docs/skill/config.md §72: skills.dir, per_skill, agents[].skills, agents[].skills_config 全 restart-required.
 func TestReloadSkillsDirIsRestartRequired(t *testing.T) {
 	m, p := newTestReloadManager(t, nil)
-	// 改 skills.dir: "./skills" → "/usr/local/yaa/skills"
+	// 改 skills.dir: 默认工作目录/skills → "/usr/local/yaa/skills"
 	newContent := minimalValidYAML + "skills:\n  dir: /usr/local/yaa/skills\n"
 	if err := os.WriteFile(p, []byte(newContent), 0o600); err != nil {
 		t.Fatal(err)

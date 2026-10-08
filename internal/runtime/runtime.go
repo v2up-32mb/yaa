@@ -94,6 +94,12 @@ func (rt *Runtime) Start(ctx context.Context) error {
 		}
 	}
 
+	// 防御性创建工作目录及子目录：直接 New(cfg) 而未走 config.Load 的调用方
+	// （如测试）同样保证 skills 空目录等就位，避免首次启动因目录缺失失败。
+	if err := config.EnsureWorkDirs(rt.cfg, rt.configPath); err != nil {
+		return fmt.Errorf("runtime: ensure work dirs: %w", err)
+	}
+
 	// Storage：未知类型/路径/migration 失败阻止 Ready。
 	store, derr := storage.New(rt.cfg.Runtime.Storage)
 	if derr != nil {

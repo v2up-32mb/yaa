@@ -3,7 +3,9 @@
 # -----------------------------------------------------------------------------
 # 用法：
 #   yaa.exe --config yaa.example.yaml
-#   （不传 --config 时按优先级探测：./yaa.yaml > ~/.yaa/yaa.yaml ...）
+#   （不传 --config 时按优先级探测：./yaa.yaml > ~/yaa/config.yaml > ~/.yaa/yaa.yaml ...）
+#   默认工作目录为 ~/yaa（可用 YAA_HOME 覆盖）；省略路径字段时默认指向
+#   工作目录下的绝对路径（如 ~/yaa/data/yaa.db、~/yaa/skills、~/yaa/plugins）。
 #
 # 这是一份「最小可行 + 常用项」示例。完整默认值可运行：
 #   yaa config defaults   # 导出全部内置默认配置
@@ -18,7 +20,7 @@ config_version: "1.0"
 runtime:
   storage:
     type: sqlite            # modernc.org/sqlite 纯 Go 实现，无需 CGO / DLL
-    path: ./data/yaa.db     # Win7 上相对 yaa.exe 所在目录
+    path: ./data/yaa.db     # 显式覆盖；省略时默认 <workdir>/data/yaa.db
   api:
     http:
       addr: 127.0.0.1:8080  # 默认只监听本机；局域网客户端请改 0.0.0.0:8080
@@ -141,7 +143,7 @@ tools:
 
 # ---- Skills（技能目录）--------------------------------------------
 skills:
-  dir: ./skills
+  dir: ./skills   # 显式覆盖；省略时默认 <workdir>/skills
 
 # ---- Memory（跨会话记忆，向量检索默认关闭，纯 SQLite 关键词即可 Win7 离线跑）----
 memory:
@@ -149,7 +151,7 @@ memory:
   max_items: 10000
   storage:
     type: sqlite
-    path: ./data/yaa-memory.db
+    path: ./data/yaa-memory.db   # 显式覆盖；省略时默认 <workdir>/data/yaa-memory.db
   vector:
     enabled: false            # 向量检索默认关闭；开启需要 embedding provider
     fallback_to_keyword: true
@@ -187,7 +189,7 @@ mcp:
 
 # ---- Plugins -------------------------------------------------------
 plugins:
-  paths: [./plugins]
+  paths: [./plugins]   # 显式覆盖；省略时默认 <workdir>/plugins
   auto_start: true
 
 # ---- 日志 ----------------------------------------------------------

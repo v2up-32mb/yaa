@@ -47,7 +47,7 @@ var rootCmd = &cobra.Command{
 var configPath string
 
 func init() {
-	rootCmd.Flags().StringVar(&configPath, "config", "", "配置文件路径（默认自动探测 ./yaa.yaml 等）")
+	rootCmd.Flags().StringVar(&configPath, "config", "", "配置文件路径（默认自动探测 ./yaa.yaml、~/yaa/config.yaml 等）")
 
 	rootCmd.Version = api.Version
 	rootCmd.SetVersionTemplate(fmt.Sprintf(`yaa version {{.Version}}
@@ -70,6 +70,12 @@ func run(configPath string) error {
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
+	// 解析实际生效的配置文件路径，供 Runtime 解析相对 skills.dir 等字段。
+	// Load 内部已创建工作目录；此处仅透传路径（未找到配置文件时为空）。
+	resolvedPath, err := config.ResolveConfigPath(configPath)
+	if err != nil {
+		return fmt.Errorf("resolve config path: %w", err)
+	}
 
 	logger, logCloser, err := logging.SetDefault(cfg.Log)
 	if err != nil {
@@ -84,6 +90,7 @@ func run(configPath string) error {
 	if err != nil {
 		return fmt.Errorf("create runtime: %w", err)
 	}
+	rt.SetConfigPath(resolvedPath)
 	if err := rt.Start(ctx); err != nil {
 		return fmt.Errorf("start runtime: %w", err)
 	}

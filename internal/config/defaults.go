@@ -28,7 +28,8 @@ func Default() *Config {
 
 func DefaultRuntimeConfig() RuntimeConfig {
 	return RuntimeConfig{
-		Storage: StorageConfig{Type: "sqlite", Path: "./data/yaa.db"},
+		// 默认路径收敛到默认工作目录（~/yaa），避免不同 cwd 启动使用不同数据。
+		Storage: StorageConfig{Type: "sqlite", Path: DefaultStoragePath()},
 		API: APIConfig{
 			HTTP: HTTPConfig{
 				Addr:           "127.0.0.1:8080",
@@ -159,7 +160,7 @@ func DefaultToolsConfig() ToolsConfig {
 		Options: map[string]any{
 			"allowed_commands": []string{},
 			"blocked_commands": []string{},
-			"working_dir":      ".",
+			"working_dir":      WorkDir(),
 			"env":              map[string]string{},
 			"max_output_bytes": 65536,
 		},
@@ -196,7 +197,7 @@ func DefaultToolsConfig() ToolsConfig {
 
 func DefaultSkillsConfig() SkillsConfig {
 	return SkillsConfig{
-		Dir:      "./skills",
+		Dir:      DefaultSkillsDir(),
 		PerSkill: map[string]SkillItemConfig{},
 	}
 }
@@ -211,7 +212,7 @@ func DefaultMemoryConfig() MemoryConfig {
 		EvictionPolicy:  "fifo",
 		Storage: MemoryStorageConfig{
 			Type: "sqlite",
-			Path: "./data/yaa-memory.db",
+			Path: DefaultMemoryStoragePath(),
 		},
 		Vector: MemoryVectorConfig{
 			Enabled:             false,
@@ -269,7 +270,7 @@ func DefaultPlannerConfig() PlannerConfig {
 
 func DefaultPluginsConfig() PluginsConfig {
 	return PluginsConfig{
-		Paths:          []string{"./plugins"},
+		Paths:          []string{DefaultPluginsDir()},
 		AutoStart:      true,
 		StartupTimeout: 30 * time.Second,
 		StopTimeout:    10 * time.Second,

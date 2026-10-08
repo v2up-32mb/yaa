@@ -29,6 +29,8 @@ func TestNewRejectsNilConfig(t *testing.T) {
 }
 
 func TestRuntimeStartMarksReadyAndHealth(t *testing.T) {
+	t.Setenv("YAA_HOME", t.TempDir())
+	t.Setenv("YAA_WORK_DIR", "")
 	rt, err := New(newTestConfig(), nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -65,6 +67,8 @@ func TestRuntimeStartMarksReadyAndHealth(t *testing.T) {
 }
 
 func TestRuntimeShutdownClearsReady(t *testing.T) {
+	t.Setenv("YAA_HOME", t.TempDir())
+	t.Setenv("YAA_WORK_DIR", "")
 	rt, _ := New(newTestConfig(), nil)
 	rt.cfg.Skills.Dir = t.TempDir()
 	ctx := context.Background()
@@ -87,6 +91,8 @@ func TestRuntimeShutdownClearsReady(t *testing.T) {
 }
 
 func TestRuntimeHealthNotReadyBeforeStart(t *testing.T) {
+	t.Setenv("YAA_HOME", t.TempDir())
+	t.Setenv("YAA_WORK_DIR", "")
 	rt, _ := New(newTestConfig(), nil)
 	h := rt.Health()
 	if h.Ready {
@@ -95,6 +101,8 @@ func TestRuntimeHealthNotReadyBeforeStart(t *testing.T) {
 }
 
 func TestRuntimeE2EHealthHTTP(t *testing.T) {
+	t.Setenv("YAA_HOME", t.TempDir())
+	t.Setenv("YAA_WORK_DIR", "")
 	cfg := config.Default()
 	cfg.Runtime.API.HTTP.Addr = "127.0.0.1:0"
 	cfg.Runtime.Storage.Type = "sqlite"
@@ -134,6 +142,8 @@ func TestRuntimeE2EHealthHTTP(t *testing.T) {
 // TestRuntimeMemorySQLiteBackendStart verifies Memory backend selection by cfg
 // produces "ready" memory component and rt.memory is non-nil.
 func TestRuntimeMemorySQLiteBackendStart(t *testing.T) {
+	t.Setenv("YAA_HOME", t.TempDir())
+	t.Setenv("YAA_WORK_DIR", "")
 	cfg := newTestConfig()
 	cfg.Memory.Enabled = true
 	cfg.Memory.Storage.Type = "sqlite"
@@ -172,6 +182,8 @@ func TestRuntimeMemorySQLiteBackendStart(t *testing.T) {
 // TestRuntimeMemorySQLiteBackendStartFailsOnBadPath 证实 SQLite migration 失败阻断 Start
 // （docs/memory/storage.md §2：无法创建则启动失败）。
 func TestRuntimeMemorySQLiteBackendStartFailsOnBadPath(t *testing.T) {
+	t.Setenv("YAA_HOME", t.TempDir())
+	t.Setenv("YAA_WORK_DIR", "")
 	cfg := newTestConfig()
 	cfg.Memory.Enabled = true
 	cfg.Memory.Storage.Type = "sqlite"
@@ -196,6 +208,8 @@ func TestRuntimeMemorySQLiteBackendStartFailsOnBadPath(t *testing.T) {
 // TestRuntimeMemoryVectorStartupReindex 启动期 vector enabled + mock embedder server，
 // 验证 Runtime Reindex 在每个 vector-enabled Agent 上跑通且 memory component 保持 ready。
 func TestRuntimeMemoryVectorStartupReindex(t *testing.T) {
+	t.Setenv("YAA_HOME", t.TempDir())
+	t.Setenv("YAA_WORK_DIR", "")
 	// mock OpenAI-compatible embeddings server: 对所有 inputs 都返固定 dim=2 向量 [0.1, 0.2]。
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
@@ -255,6 +269,8 @@ func TestRuntimeMemoryVectorStartupReindex(t *testing.T) {
 // 时把 memory provider + resolver 注入到 API Server：HTTP 调 memory 端点对未知 agent
 // 应返 40401（resolver 返 ok=false），而不是 50301（provider 未注入）。
 func TestRuntimeMemoryRemoteAPIProviderInjected(t *testing.T) {
+	t.Setenv("YAA_HOME", t.TempDir())
+	t.Setenv("YAA_WORK_DIR", "")
 	cfg := newTestConfig()
 	cfg.Memory.Enabled = true
 	cfg.Memory.Storage.Type = "memory"

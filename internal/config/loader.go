@@ -79,6 +79,15 @@ func (l *Loader) Load() (*Config, error) {
 		return nil, fmt.Errorf("validate config: %w", err)
 	}
 
+	// Step 10: 首次运行创建工作目录及各功能子目录（data/skills/plugins 等）。
+	// 校验通过后才落盘建目录，避免非法配置污染文件系统。
+	if err := EnsureWorkDirs(cfg, path); err != nil {
+		if path != "" {
+			return nil, fmt.Errorf("ensure work dirs (config %s): %w", path, err)
+		}
+		return nil, fmt.Errorf("ensure work dirs: %w", err)
+	}
+
 	return cfg, nil
 }
 

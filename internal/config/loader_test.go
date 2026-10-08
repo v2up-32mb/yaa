@@ -20,8 +20,19 @@ func chdir(t *testing.T, dir string) {
 	t.Cleanup(func() { _ = os.Chdir(orig) })
 }
 
+// isolateWorkDir 把工作目录重定向到临时目录，避免测试污染真实 ~/yaa
+// 并保证 resolveConfigPath 的 workdir 探测命中空目录（返回空路径走纯默认）。
+func isolateWorkDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	t.Setenv(EnvWorkDirPrimary, dir)
+	t.Setenv(EnvWorkDirFallback, "")
+	return dir
+}
+
 func TestLoadWithNoConfigFileUsesDefaults(t *testing.T) {
 	// 默认路径全部未命中：在空临时工作目录运行，返回纯默认配置并通过校验。
+	isolateWorkDir(t)
 	chdir(t, t.TempDir())
 	t.Setenv("YAA_CONFIG_PATH", "")
 
@@ -76,6 +87,7 @@ func TestResolveConfigPathEnvVar(t *testing.T) {
 
 func TestResolveConfigPathSearchOrder(t *testing.T) {
 	chdir(t, t.TempDir())
+	isolateWorkDir(t)
 	t.Setenv("YAA_CONFIG_PATH", "")
 
 	dir, _ := os.Getwd()
@@ -97,6 +109,7 @@ func TestResolveConfigPathSearchOrder(t *testing.T) {
 
 func TestResolveConfigPathReturnsEmptyWhenAllMiss(t *testing.T) {
 	chdir(t, t.TempDir())
+	isolateWorkDir(t)
 	t.Setenv("YAA_CONFIG_PATH", "")
 
 	got, err := resolveConfigPath("")
@@ -110,6 +123,7 @@ func TestResolveConfigPathReturnsEmptyWhenAllMiss(t *testing.T) {
 
 func TestLoadConfigFileFullPipeline(t *testing.T) {
 	chdir(t, t.TempDir())
+	isolateWorkDir(t)
 	t.Setenv("YAA_CONFIG_PATH", "")
 	t.Setenv("OPENAI_API_KEY", "sk-test-from-env")
 
@@ -153,6 +167,7 @@ providers:
 
 func TestLoadFlagOverride(t *testing.T) {
 	chdir(t, t.TempDir())
+	isolateWorkDir(t)
 	t.Setenv("YAA_CONFIG_PATH", "")
 
 	content := `
@@ -179,6 +194,7 @@ runtime:
 
 func TestLoadFlagRejectsNonScalarPath(t *testing.T) {
 	chdir(t, t.TempDir())
+	isolateWorkDir(t)
 	t.Setenv("YAA_CONFIG_PATH", "")
 
 	dir, _ := os.Getwd()
@@ -195,6 +211,7 @@ func TestLoadFlagRejectsNonScalarPath(t *testing.T) {
 
 func TestLoadFlagRejectsUnknownField(t *testing.T) {
 	chdir(t, t.TempDir())
+	isolateWorkDir(t)
 	t.Setenv("YAA_CONFIG_PATH", "")
 
 	dir, _ := os.Getwd()
