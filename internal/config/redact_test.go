@@ -71,17 +71,18 @@ func TestRedactedViewKnownSecretsReplaced(t *testing.T) {
 		t.Fatalf("redact: %v", err)
 	}
 	raw, _ := json.Marshal(view)
-	if _, ok := findJSONPathValue(t, raw, "runtime.auth.tokens.0.token", "***"); !ok {
-		t.Fatal("auth.tokens[*].token 未脱敏")
+	// 已知密钥默认前后各露 3 位（MaskSecret），不再是全 ***。
+	if _, ok := findJSONPathValue(t, raw, "runtime.auth.tokens.0.token", "rea*****ken"); !ok {
+		t.Fatal("auth.tokens[*].token 未按前后3位脱敏")
 	}
-	if s, ok := findJSONPathField(t, raw, "runtime.auth.jwt.secret"); !ok || s != "***" {
-		t.Fatalf("jwt.secret 期望 ***: %v", s)
+	if s, ok := findJSONPathField(t, raw, "runtime.auth.jwt.secret"); !ok || s != "jwt*****ret" {
+		t.Fatalf("jwt.secret 期望 jwt*****ret: %v", s)
 	}
-	if s, ok := findJSONPathField(t, raw, "providers.0.api_key"); !ok || s != "***" {
-		t.Fatalf("providers[*].api_key 期望 ***: %v", s)
+	if s, ok := findJSONPathField(t, raw, "providers.0.api_key"); !ok || s != "rea*****key" {
+		t.Fatalf("providers[*].api_key 期望 rea*****key: %v", s)
 	}
-	if s, ok := findJSONPathField(t, raw, "memory.embedding.api_key"); !ok || s != "***" {
-		t.Fatalf("memory.embedding.api_key 期望 ***: %v", s)
+	if s, ok := findJSONPathField(t, raw, "memory.embedding.api_key"); !ok || s != "rea*****key" {
+		t.Fatalf("memory.embedding.api_key 期望 rea*****key: %v", s)
 	}
 }
 
@@ -247,4 +248,74 @@ func splitDot(p string) []string {
 		out = append(out, cur)
 	}
 	return out
+}
+
+func TestMaskSecret(t *testing.T) {
+	cases := []struct {
+		s     string
+		first int
+		last  int
+		want  string
+	}{
+		{"public", 3, 3, "pub*****lic"},
+		{"", 3, 3, ""},
+		{"x", 3, 3, "*****"},
+		{"ab", 3, 3, "a*****"},
+		{"abcde", 3, 3, "abc*****e"},
+		{"abcdefghij", 3, 3, "abc*****hij"},
+		{"abcdef", 3, 0, "abc*****"},
+		{"abcdef", 0, 3, "*****def"},
+		{"abcdef", 0, 0, "*****"},
+		{"abcdef", -1, -2, "*****"},
+		{"密钥AB12", 2, 2, "密钥*****12"},
+	}
+	for _, c := range cases {
+		if got := MaskSecret(c.s, c.first, c.last); got != c.want {
+			t.Errorf("MaskSecret(%q,%d,%d) = %q, want %q", c.s, c.first, c.last, got, c.want)
+		}
+	}
+}
+
+func TestParseMaskParam(t *testing.T) {
+	cases := []struct {
+		in          string
+		first, last int
+	}{
+		{"", 3, 3},
+		{"both", 3, 3},
+		{"both:4", 4, 4},
+		{"prefix", 3, 0},
+		{"prefix:2", 2, 0},
+		{"suffix:4", 0, 4},
+		{"suffix", 0, 3},
+		{"bogus", 3, 3},
+		{"both:99", 16, 16},
+		{"both:abc", 3, 3},
+	}
+	for _, c := range cases {
+		if f, l := ParseMaskParam(c.in); f != c.first || l != c.last {
+			t.Errorf("ParseMaskParam(%q) = (%d,%d), want (%d,%d)", c.in, f, l, c.first, c.last)
+		}
+	}
+}
+
+func TestRedactedViewWithMaskModes(t *testing.T) {
+	for _, tc := range []struct {
+		first, last int
+		want        string
+	}{
+		{3, 3, "jwt*****ret"},
+		{3, 0, "jwt*****"},
+		{0, 4, "*****cret"},
+		{0, 0, "*****"},
+	} {
+		view, err := RedactedViewWithMask(buildFullConfig(), tc.first, tc.last)
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, _ := json.Marshal(view)
+		if s, ok := findJSONPathField(t, raw, "runtime.auth.jwt.secret"); !ok || s != tc.want {
+			t.Errorf("mask(%d,%d): jwt.secret = %v, want %v", tc.first, tc.last, s, tc.want)
+		}
+	}
 }

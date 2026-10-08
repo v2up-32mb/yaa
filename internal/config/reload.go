@@ -176,6 +176,8 @@ func (m *ReloadManager) Update(raw map[string]any) (ReloadResult, error) {
 	if err != nil {
 		return ReloadResult{}, fmt.Errorf("%w: %v", ErrConfigHotReloadFailed, err)
 	}
+	// 星号回放归一化后再合并（脱敏视图的部分原文视为保持标记）。
+	normalizeMaskedSecrets(raw)
 	merged := mergeKeepMask(oldMap, raw)
 	// JSON 数字归一化（int/duration 字段回放），再进严格解码管线。
 	merged = normalizeJSONNumbers(merged)
@@ -352,6 +354,44 @@ func deepCopyValue(v any) any {
 		return out
 	default:
 		return v
+	}
+}
+
+// normalizeMaskedSecrets 把提交文档中 4 个已知密钥路径上含星号 run（"*****"）
+// 的值统一改写为 RedactedMask 保持标记：脱敏视图展示的是部分原文
+// （如 pub*****lic），直接回放必须理解为“保持不变”而非字面写入。
+// 误伤仅当用户真想把密钥设成含连续 5 星的值（视为不支持，需换值）。
+func normalizeMaskedSecrets(raw map[string]any) {
+	maskValue := func(node map[string]any, key string) {
+		if v, ok := node[key].(string); ok && strings.Contains(v, maskStars) && v != RedactedMask {
+			node[key] = RedactedMask
+		}
+	}
+	if rt, ok := raw["runtime"].(map[string]any); ok {
+		if auth, ok := rt["auth"].(map[string]any); ok {
+			if tokens, ok := auth["tokens"].([]any); ok {
+				for _, tk := range tokens {
+					if tm, ok := tk.(map[string]any); ok {
+						maskValue(tm, "token")
+					}
+				}
+			}
+			if jwt, ok := auth["jwt"].(map[string]any); ok {
+				maskValue(jwt, "secret")
+			}
+		}
+	}
+	if providers, ok := raw["providers"].([]any); ok {
+		for _, p := range providers {
+			if pm, ok := p.(map[string]any); ok {
+				maskValue(pm, "api_key")
+			}
+		}
+	}
+	if mem, ok := raw["memory"].(map[string]any); ok {
+		if emb, ok := mem["embedding"].(map[string]any); ok {
+			maskValue(emb, "api_key")
+		}
 	}
 }
 

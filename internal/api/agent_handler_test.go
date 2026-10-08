@@ -417,8 +417,8 @@ func TestConfigEndpointReturnsRedactedView(t *testing.T) {
 		t.Fatalf("providers: %+v", providers)
 	}
 	pm := providers[0].(map[string]any)
-	if pm["api_key"] != "***" {
-		t.Fatalf("api_key should be redacted: %v", pm["api_key"])
+	if pm["api_key"] != "sup*****123" {
+		t.Fatalf("api_key should be partially masked: %v", pm["api_key"])
 	}
 	if pm["id"] != "p1" || pm["type"] != "openai" {
 		t.Fatalf("non-sensitive fields should be preserved: %+v", pm)

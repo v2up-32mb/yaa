@@ -83,3 +83,40 @@ func TestAPIPutConfigWithoutReloadManager(t *testing.T) {
 		t.Fatalf("PUT = %d/%d, want 503/50301", resp.StatusCode, env.Code)
 	}
 }
+
+func TestAPIGetConfigMaskParam(t *testing.T) {
+	srv, _ := newConfigTestServer(t, `config_version: "1.0"
+providers:
+  - id: p1
+    type: openai
+    api_key: sk-live-secret-key
+    base_url: "https://api.openai.com/v1"
+    models:
+      - {id: m1, context_window: 128000, max_output: 16384}
+agents: []
+`)
+	for _, tc := range []struct {
+		query string
+		want  string
+	}{
+		{"", "sk-*****key"},
+		{"mask=both", "sk-*****key"},
+		{"mask=prefix:4", "sk-l*****"},
+		{"mask=suffix:4", "*****-key"},
+		{"mask=bogus", "sk-*****key"},
+	} {
+		_, env := doReq(t, srv, "GET", "/api/v1/config?"+tc.query, nil)
+		if env.Code != 0 {
+			t.Fatalf("GET %q code = %d", tc.query, env.Code)
+		}
+		data, _ := env.Data.(map[string]any)
+		provs, _ := data["providers"].([]any)
+		if len(provs) == 0 {
+			t.Fatalf("GET %q: no providers", tc.query)
+		}
+		got, _ := provs[0].(map[string]any)["api_key"].(string)
+		if got != tc.want {
+			t.Errorf("GET %q api_key = %q, want %q", tc.query, got, tc.want)
+		}
+	}
+}

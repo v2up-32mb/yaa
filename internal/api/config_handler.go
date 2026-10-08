@@ -9,6 +9,8 @@ import (
 // handleGetConfig — GET /api/v1/config（read:config）
 // 文档：Handler 只读取一次配置 snapshot，并调用 config.RedactedView；
 // 失败 500/50001，不得 fallback 未脱敏 snapshot。
+// 查询参数 ?mask= 控制密钥展示位数：both[:N] | prefix[:N] | suffix[:N]
+// （缺席/非法即默认前后各 3 位），便于区分多个密钥。
 func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	rm := s.reloadMgr
@@ -18,11 +20,12 @@ func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 	if rm != nil {
 		cfg = rm.Current()
 	}
+	first, last := config.ParseMaskParam(r.URL.Query().Get("mask"))
 	if cfg == nil {
 		s.writeError(w, r, http.StatusServiceUnavailable, 50301, "config snapshot unavailable")
 		return
 	}
-	view, err := config.RedactedView(cfg)
+	view, err := config.RedactedViewWithMask(cfg, first, last)
 	if err != nil {
 		s.writeError(w, r, http.StatusInternalServerError, 50001, "config redaction failed")
 		return

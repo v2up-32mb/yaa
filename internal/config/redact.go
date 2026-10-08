@@ -10,6 +10,98 @@ import (
 // （docs/config/overview.md §3.3）。
 var ErrConfigRedactionFailed = errors.New("config: redaction failed")
 
+// DefaultMaskFirst/Last 是脱敏默认展示位数：前后各 3 位。
+const (
+	DefaultMaskFirst = 3
+	DefaultMaskLast  = 3
+	// maskStars 是脱敏星号固定宽度（不随密钥长度变化，避免泄露长度）。
+	maskStars = "*****"
+)
+
+// MaskSecret 部分脱敏：展示前 first 位与后 last 位（按 rune 计），其余固定
+// 5 个星号。空字符串保持空（表示未设置）。密钥过短时展示位相应减少，
+// 且至少保留 1 位不展示（长度 ≤1 时全星号），绝不全部露出。
+// 例：MaskSecret("public", 3, 3) == "pub*****lic"。
+func MaskSecret(s string, first, last int) string {
+	if s == "" {
+		return ""
+	}
+	if first < 0 {
+		first = 0
+	}
+	if last < 0 {
+		last = 0
+	}
+	r := []rune(s)
+	n := len(r)
+	pre, suf := first, last
+	if n <= 1 {
+		pre, suf = 0, 0
+	} else if n < first+last {
+		pre = first
+		if pre > n-1 {
+			pre = n - 1
+		}
+		suf = last
+		if suf > n-1-pre {
+			suf = n - 1 - pre
+		}
+	}
+	return string(r[:pre]) + maskStars + string(r[n-suf:])
+}
+
+// ParseMaskParam 解析 ?mask= 查询参数：both[:N] | prefix[:N] | suffix[:N]，
+// N 缺席用默认 3，非法输入回默认前后 3 位。返回 (first, last)。
+func ParseMaskParam(q string) (first, last int) {
+	first, last = DefaultMaskFirst, DefaultMaskLast
+	if q == "" {
+		return first, last
+	}
+	mode, num, _ := splitMaskParam(q)
+	n := DefaultMaskFirst
+	if num >= 0 {
+		n = num
+	}
+	if n > 16 {
+		n = 16
+	}
+	switch mode {
+	case "prefix":
+		return n, 0
+	case "suffix":
+		return 0, n
+	case "both", "":
+		return n, n
+	default:
+		return DefaultMaskFirst, DefaultMaskLast
+	}
+}
+
+func splitMaskParam(q string) (mode string, num int, ok bool) {
+	num = -1
+	if i := indexByte(q, ':'); i >= 0 {
+		mode = q[:i]
+		n := 0
+		for _, c := range q[i+1:] {
+			if c < '0' || c > '9' {
+				return "", -1, false
+			}
+			n = n*10 + int(c-'0')
+		}
+		return mode, n, true
+	}
+	return q, -1, true
+}
+
+func indexByte(s string, b byte) int {
+	for i := 0; i < len(s); i++ {
+		if s[i] == b {
+			return i
+		}
+	}
+	return -1
+}
+
 // RedactedView 返回 canonical Config 的 JSON-compatible 深拷贝，不修改 cfg
 // （docs/config/overview.md §3.3）。
 //
@@ -20,7 +112,13 @@ var ErrConfigRedactionFailed = errors.New("config: redaction failed")
 //  3. 对 MCP servers[*].headers/env 及开放 Map 递归：object/array 保持结构，scalar 替为 "***"，null 保持 null。
 //
 // 输入 cfg 不被修改；任何 Marshal/Decode 失败用 %w 包 ErrConfigRedactionFailed。
+// RedactedView 返回默认脱敏视图（密钥前后各露 DefaultMaskFirst/Last 位）。
 func RedactedView(cfg *Config) (any, error) {
+	return RedactedViewWithMask(cfg, DefaultMaskFirst, DefaultMaskLast)
+}
+
+// RedactedViewWithMask 按指定展示位数脱敏（first/last <0 视为 0）。
+func RedactedViewWithMask(cfg *Config, first, last int) (any, error) {
 	if cfg == nil {
 		return nil, errors.New("config: redaction failed: nil config")
 	}
@@ -40,7 +138,7 @@ func RedactedView(cfg *Config) (any, error) {
 	if !ok {
 		return nil, errors.New("config: redaction failed: root not object")
 	}
-	redactKnownSecrets(m)
+	redactKnownSecrets(m, first, last)
 	redactOpenMaps(m)
 	// 3. 返回脱敏后的视图。GetEdge map 已用 json.Number 替代 number；
 	// 远端 GET /api/v1/config 仍要 json.Marshal 整体返回，UseNumber 让大整数不丢精度。
@@ -49,7 +147,7 @@ func RedactedView(cfg *Config) (any, error) {
 
 // redactKnownSecrets 按 docs §3.3 step 2 替换已知 Secret 路径的 string 值为 "***"。
 // 不存在的路径静默跳过（Config 默认值会保证字段存在，但纯 nil/零值 cfg 缺失时也不报错）。
-func redactKnownSecrets(root map[string]any) {
+func redactKnownSecrets(root map[string]any, first, last int) {
 	// helpers fromJSON path navigation。
 	setStrAsMap := func(node map[string]any, path []string, val string) {
 		cur := node
@@ -76,16 +174,16 @@ func redactKnownSecrets(root map[string]any) {
 			if tokens, ok := auth["tokens"].([]any); ok {
 				for _, tk := range tokens {
 					if tm, ok := tk.(map[string]any); ok {
-						if _, isStr := tm["token"].(string); isStr {
-							tm["token"] = "***"
+						if v, isStr := tm["token"].(string); isStr {
+							tm["token"] = MaskSecret(v, first, last)
 						}
 					}
 				}
 			}
 			// runtime.auth.jwt.secret
 			if jwt, ok := auth["jwt"].(map[string]any); ok {
-				if _, isStr := jwt["secret"].(string); isStr {
-					jwt["secret"] = "***"
+				if v, isStr := jwt["secret"].(string); isStr {
+					jwt["secret"] = MaskSecret(v, first, last)
 				}
 			}
 		}
@@ -94,8 +192,8 @@ func redactKnownSecrets(root map[string]any) {
 	if providers, ok := root["providers"].([]any); ok {
 		for _, p := range providers {
 			if pm, ok := p.(map[string]any); ok {
-				if _, isStr := pm["api_key"].(string); isStr {
-					pm["api_key"] = "***"
+				if v, isStr := pm["api_key"].(string); isStr {
+					pm["api_key"] = MaskSecret(v, first, last)
 				}
 			}
 		}
@@ -103,8 +201,8 @@ func redactKnownSecrets(root map[string]any) {
 	// memory.embedding.api_key
 	if mem, ok := root["memory"].(map[string]any); ok {
 		if emb, ok := mem["embedding"].(map[string]any); ok {
-			if _, isStr := emb["api_key"].(string); isStr {
-				emb["api_key"] = "***"
+			if v, isStr := emb["api_key"].(string); isStr {
+				emb["api_key"] = MaskSecret(v, first, last)
 			}
 		}
 	}
