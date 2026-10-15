@@ -136,3 +136,44 @@ skills:
 		t.Fatal("a2 should exist after apply")
 	}
 }
+
+// TestRuntimeApplyConfigShuttingDownGuard verifies that applyConfig returns an
+// error without performing any subsystem changes when shuttingDown is set.
+func TestRuntimeApplyConfigShuttingDownGuard(t *testing.T) {
+	t.Setenv("YAA_HOME", t.TempDir())
+	t.Setenv("YAA_WORK_DIR", "")
+	rt, err := New(newTestConfig(), nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	rt.cfg.Load().Skills.Dir = t.TempDir()
+	if err := rt.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = rt.Shutdown(shutdownCtx)
+	})
+
+	// Mark as shutting down; applyConfig must reject.
+	rt.shuttingDown.Store(true)
+	err = rt.applyConfig(nil, rt.cfg.Load(), []string{"log.level"})
+	if err == nil {
+		t.Fatal("applyConfig should return error when shuttingDown is set")
+	}
+
+	// Reset and verify normal applyConfig still works.
+	rt.shuttingDown.Store(false)
+	newCfg := config.Default()
+	newCfg.Runtime.API.HTTP.Addr = rt.cfg.Load().Runtime.API.HTTP.Addr
+	newCfg.Runtime.Storage.Type = "memory"
+	newCfg.Skills.Dir = rt.cfg.Load().Skills.Dir
+	newCfg.Log.Level = "debug"
+	if err := rt.applyConfig(rt.cfg.Load(), newCfg, []string{"log.level"}); err != nil {
+		t.Fatalf("applyConfig after reset should succeed: %v", err)
+	}
+	if got := rt.cfg.Load().Log.Level; got != "debug" {
+		t.Fatalf("Log.Level = %q, want debug", got)
+	}
+}

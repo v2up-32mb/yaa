@@ -58,6 +58,10 @@ func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request, rm *con
 		s.writeError(w, r, http.StatusBadRequest, 40001, err.Error())
 		return
 	}
+	if result.ApplyError != nil {
+		s.writeError(w, r, http.StatusInternalServerError, 50001, "config applied but subsystem update failed: "+result.ApplyError.Error())
+		return
+	}
 	writeOK(w, RequestIDFromContext(r.Context()), http.StatusOK, map[string]any{
 		"applied":          result.Applied,
 		"changed":          result.Changed,

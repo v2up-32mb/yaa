@@ -542,3 +542,57 @@ func TestReloadSkillsPerSkillOptionsIsRestartRequired(t *testing.T) {
 		t.Fatalf("skills.per_skill.<name>.options change must be hot-applied, got %+v", result)
 	}
 }
+
+// TestReloadOnAppliedErrorPropagatedToApplyError verifies that a non-nil error
+// returned by OnApplied is stored in ReloadResult.ApplyError and does not
+// prevent the snapshot from being published (Applied remains true).
+func TestReloadOnAppliedErrorPropagatedToApplyError(t *testing.T) {
+	m, p := newTestReloadManager(t, nil)
+	m.OnApplied = func(old, newCfg *Config, changed []string) error {
+		return errors.New("subsystem apply failed")
+	}
+	newContent := minimalValidYAML + "log:\n  level: debug\n"
+	if err := os.WriteFile(p, []byte(newContent), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	result, err := m.Reload()
+	if err != nil {
+		t.Fatalf("Reload returned unexpected error: %v", err)
+	}
+	if !result.Applied {
+		t.Fatalf("snapshot should still be published (Applied=true), got %+v", result)
+	}
+	if result.ApplyError == nil {
+		t.Fatal("ApplyError should be non-nil when OnApplied returns error")
+	}
+	// Snapshot was published: Current reflects the new value.
+	if got := m.Current().Log.Level; got != "debug" {
+		t.Fatalf("Current Log.Level = %q, want debug", got)
+	}
+}
+
+// TestUpdateOnAppliedErrorPropagatedToApplyError is the same check for Update().
+func TestUpdateOnAppliedErrorPropagatedToApplyError(t *testing.T) {
+	isolateWorkDir(t)
+	m, _ := newTestReloadManager(t, nil)
+	m.OnApplied = func(old, newCfg *Config, changed []string) error {
+		return errors.New("update apply failed")
+	}
+	raw := map[string]any{
+		"config_version": "1.0",
+		"log":            map[string]any{"level": "warn"},
+	}
+	result, err := m.Update(raw)
+	if err != nil {
+		t.Fatalf("Update returned unexpected error: %v", err)
+	}
+	if !result.Applied {
+		t.Fatalf("snapshot should still be published (Applied=true), got %+v", result)
+	}
+	if result.ApplyError == nil {
+		t.Fatal("ApplyError should be non-nil when OnApplied returns error")
+	}
+	if got := m.Current().Log.Level; got != "warn" {
+		t.Fatalf("Current Log.Level = %q, want warn", got)
+	}
+}

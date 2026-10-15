@@ -35,7 +35,7 @@ func TestRuntimeStartMarksReadyAndHealth(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	rt.cfg.Skills.Dir = t.TempDir()
+	rt.cfg.Load().Skills.Dir = t.TempDir()
 	ctx := context.Background()
 	if err := rt.Start(ctx); err != nil {
 		t.Fatalf("Start: %v", err)
@@ -70,7 +70,7 @@ func TestRuntimeShutdownClearsReady(t *testing.T) {
 	t.Setenv("YAA_HOME", t.TempDir())
 	t.Setenv("YAA_WORK_DIR", "")
 	rt, _ := New(newTestConfig(), nil)
-	rt.cfg.Skills.Dir = t.TempDir()
+	rt.cfg.Load().Skills.Dir = t.TempDir()
 	ctx := context.Background()
 	if err := rt.Start(ctx); err != nil {
 		t.Fatalf("Start: %v", err)
@@ -111,7 +111,7 @@ func TestRuntimeE2EHealthHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	rt.cfg.Skills.Dir = t.TempDir()
+	rt.cfg.Load().Skills.Dir = t.TempDir()
 	if err := rt.Start(context.Background()); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -155,7 +155,7 @@ func TestRuntimeMemorySQLiteBackendStart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	rt.cfg.Skills.Dir = t.TempDir()
+	rt.cfg.Load().Skills.Dir = t.TempDir()
 	ctx := context.Background()
 	if err := rt.Start(ctx); err != nil {
 		t.Fatalf("Start: %v", err)
@@ -198,7 +198,7 @@ func TestRuntimeMemorySQLiteBackendStartFailsOnBadPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	rt.cfg.Skills.Dir = t.TempDir()
+	rt.cfg.Load().Skills.Dir = t.TempDir()
 	if err := rt.Start(context.Background()); err == nil {
 		t.Fatal("Start should fail when sqlite backend cannot create dir")
 		_ = rt.Shutdown(context.Background())
@@ -246,7 +246,7 @@ func TestRuntimeMemoryVectorStartupReindex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	rt.cfg.Skills.Dir = t.TempDir()
+	rt.cfg.Load().Skills.Dir = t.TempDir()
 	ctx := context.Background()
 	if err := rt.Start(ctx); err != nil {
 		t.Fatalf("Start: %v", err)
@@ -280,7 +280,7 @@ func TestRuntimeMemoryRemoteAPIProviderInjected(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	rt.cfg.Skills.Dir = t.TempDir()
+	rt.cfg.Load().Skills.Dir = t.TempDir()
 	ctx := context.Background()
 	if err := rt.Start(ctx); err != nil {
 		t.Fatalf("Start: %v", err)

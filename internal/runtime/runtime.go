@@ -34,7 +34,8 @@ import (
 // Runtime 是系统根容器，负责启动/停止子系统与提供健康检查。
 // Phase 1 阶段已接 Config + Storage + API；后续阶段逐步接入 Provider/Tool 等组件。
 type Runtime struct {
-	cfg        *config.Config
+	// cfg 是当前生效的配置快照；applyConfig 通过 Store 原子替换，并发读取通过 Load 安全访问。
+	cfg        atomic.Pointer[config.Config]
 	configPath string
 	store      storage.Storage
 	reloadMgr  *config.ReloadManager // 非 nil 时启用 config hot reload (configPath 已设置时构造)
@@ -50,6 +51,7 @@ type Runtime struct {
 	logger     *slog.Logger
 
 	ready        atomic.Bool
+	shuttingDown atomic.Bool // 置位后 applyConfig 立即返回错误，不执行任何子系统变更
 	startedAt    time.Time
 	components   map[string]string
 	componentsMu sync.RWMutex
@@ -66,11 +68,12 @@ func New(cfg *config.Config, logger *slog.Logger) (*Runtime, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Runtime{
-		cfg:        cfg,
+	rt := &Runtime{
 		logger:     logger,
 		components: map[string]string{},
-	}, nil
+	}
+	rt.cfg.Store(cfg)
+	return rt, nil
 }
 
 // SetConfigPath 记录主配置文件路径；启动时用于解析 skill dir 等相对主配置文件目录的字段。
@@ -90,11 +93,11 @@ func (rt *Runtime) Start(ctx context.Context) error {
 	// OnApplied 挂载读时子系统重建（见 applyConfig），快照发布成功即自动生效。
 	// 保证纯默认启动也能在线改配置。
 	if rt.reloadMgr == nil {
-		if rm, err := config.NewReloadManager(rt.cfg, rt.configPath, nil, nil); err == nil {
+		if rm, err := config.NewReloadManager(rt.cfg.Load(), rt.configPath, nil, nil); err == nil {
 			if aerr := rm.Activate(); aerr == nil {
 				rt.reloadMgr = rm
 				rm.OnApplied = rt.applyConfig
-				rt.cfg = rm.Current() // 切到 ReloadManager 持有的 same snapshot
+				rt.cfg.Store(rm.Current()) // 切到 ReloadManager 持有的 same snapshot
 			} else {
 				rt.logger.Warn("runtime: config activate failed; reload disabled", "error", aerr)
 			}
@@ -105,17 +108,17 @@ func (rt *Runtime) Start(ctx context.Context) error {
 
 	// 防御性创建工作目录及子目录：直接 New(cfg) 而未走 config.Load 的调用方
 	// （如测试）同样保证 skills 空目录等就位，避免首次启动因目录缺失失败。
-	if err := config.EnsureWorkDirs(rt.cfg, rt.configPath); err != nil {
+	if err := config.EnsureWorkDirs(rt.cfg.Load(), rt.configPath); err != nil {
 		return fmt.Errorf("runtime: ensure work dirs: %w", err)
 	}
 
 	// Storage：未知类型/路径/migration 失败阻止 Ready。
-	store, derr := storage.New(rt.cfg.Runtime.Storage)
+	store, derr := storage.New(rt.cfg.Load().Runtime.Storage)
 	if derr != nil {
 		return derr
 	}
 	rt.store = store
-	if rt.cfg.Runtime.Storage.Type == "memory" {
+	if rt.cfg.Load().Runtime.Storage.Type == "memory" {
 		rt.setComponent("storage", "degraded")
 		rt.logger.Warn("root storage using memory backend", "durable", false)
 	} else {
@@ -123,7 +126,7 @@ func (rt *Runtime) Start(ctx context.Context) error {
 	}
 
 	// Provider：未知类型/重复 ID/构造失败阻止 Ready。
-	pm, perr := provider.NewManager(rt.cfg.Providers)
+	pm, perr := provider.NewManager(rt.cfg.Load().Providers)
 	if perr != nil {
 		rt.rollback()
 		return perr
@@ -136,15 +139,15 @@ func (rt *Runtime) Start(ctx context.Context) error {
 	// v1 阶段默认使用 in-memory ContentStore 后端（SQLite 后端后续 commit）；
 	// 向量/Reindex 暂不接入（policy.Vector.Enabled=false 时 Manager.IndexStatus 永远 ready，
 	// 启动无需 Reindex）。
-	if rt.cfg.Memory.Enabled {
+	if rt.cfg.Load().Memory.Enabled {
 		// 按 cfg.Memory.Storage.Type 选 ContentStore backend：
 		//   "sqlite" → sqlitestore.New(path)，目录不存在创建；失败则 Runtime Not Ready
 		//     （docs/memory/storage.md §2: 无法创建或迁移失败则启动失败）。
 		//   "memory"/其它 → in-memory 后端（v1 默认行为；非持久）。
 		var ms mm.ContentStore
-		switch rt.cfg.Memory.Storage.Type {
+		switch rt.cfg.Load().Memory.Storage.Type {
 		case "sqlite":
-			ss, sErr := sqlitestore.New(rt.cfg.Memory.Storage.Path)
+			ss, sErr := sqlitestore.New(rt.cfg.Load().Memory.Storage.Path)
 			if sErr != nil {
 				rt.rollback()
 				return fmt.Errorf("runtime: memory sqlite store: %w", sErr)
@@ -152,11 +155,11 @@ func (rt *Runtime) Start(ctx context.Context) error {
 			ms = ss
 		default:
 			ms = memstore.New()
-			if rt.cfg.Memory.Storage.Type != "memory" && rt.cfg.Memory.Storage.Type != "" {
+			if rt.cfg.Load().Memory.Storage.Type != "memory" && rt.cfg.Load().Memory.Storage.Type != "" {
 				rt.logger.Warn("memory: unknown storage.type, falling back to memory backend",
-					"type", rt.cfg.Memory.Storage.Type)
+					"type", rt.cfg.Load().Memory.Storage.Type)
 			}
-			if rt.cfg.Memory.Storage.Type == "memory" || rt.cfg.Memory.Storage.Type == "" {
+			if rt.cfg.Load().Memory.Storage.Type == "memory" || rt.cfg.Load().Memory.Storage.Type == "" {
 				rt.logger.Warn("memory: using in-memory content store backend", "durable", false)
 			}
 		}
@@ -165,8 +168,8 @@ func (rt *Runtime) Start(ctx context.Context) error {
 		// Reindex 失败仅 warn（不阻断 Runtime Ready，留 degraded 由后续 Reindex 修复）。
 		var embedder mm.Embedder
 		var indexFactory mm.VectorIndexFactory
-		if rt.cfg.Memory.Vector.Enabled {
-			ed, eErr := embedding.New(rt.cfg.Memory.Embedding)
+		if rt.cfg.Load().Memory.Vector.Enabled {
+			ed, eErr := embedding.New(rt.cfg.Load().Memory.Embedding)
 			if eErr != nil {
 				rt.rollback()
 				return fmt.Errorf("runtime: memory embedder: %w", eErr)
@@ -179,9 +182,9 @@ func (rt *Runtime) Start(ctx context.Context) error {
 		rt.memory = mmMgr
 		rt.setComponent("memory", "ready")
 		// vector 启用时启动期对每个 Agent Reindex; 失败仅 warn 让 health 显 degraded。
-		if rt.cfg.Memory.Vector.Enabled {
-			for _, ag := range rt.cfg.Agents {
-				policy := config.ResolveMemoryPolicy(rt.cfg.Memory, ag.Memory)
+		if rt.cfg.Load().Memory.Vector.Enabled {
+			for _, ag := range rt.cfg.Load().Agents {
+				policy := config.ResolveMemoryPolicy(rt.cfg.Load().Memory, ag.Memory)
 				if !policy.Enabled || !policy.Vector.Enabled {
 					continue
 				}
@@ -197,24 +200,24 @@ func (rt *Runtime) Start(ctx context.Context) error {
 			}
 		}
 		// docs/memory checklist 行32: 后台周期 cleanup worker
-		mmMgr.StartCleanup(ctx, rt.cfg.Memory.ExpireInterval, rt.cfg.Memory.ExpireBatchSize)
+		mmMgr.StartCleanup(ctx, rt.cfg.Load().Memory.ExpireInterval, rt.cfg.Load().Memory.ExpireBatchSize)
 	} else {
 		rt.setComponent("memory", "disabled")
 	}
 
 	// Tool Manager：注册 builtin → 每 Agent 空历史 projection binding 校验（docs/tool/manager.md §2.2）。
-	tm, terr := tool.NewManager(tool.Dependencies{Config: rt.cfg, Providers: pm, Logger: rt.logger})
+	tm, terr := tool.NewManager(tool.Dependencies{Config: rt.cfg.Load(), Providers: pm, Logger: rt.logger})
 	if terr != nil {
 		rt.rollback()
 		return terr
 	}
-	if rerr := builtin.RegisterBuiltin(tm, rt.cfg); rerr != nil {
+	if rerr := builtin.RegisterBuiltin(tm, rt.cfg.Load()); rerr != nil {
 		rt.rollback()
 		return rerr
 	}
 	// 启动 binding 校验：每个 Agent 当前 definitions 的空历史投影；碰撞或非法名尽早拒绝 Ready
 	// （docs/agent.md §4 step 3 + docs/tool/manager.md §2.2）。
-	for _, ag := range rt.cfg.Agents {
+	for _, ag := range rt.cfg.Load().Agents {
 		if _, perr := tm.ToToolDefs(ag.ID, nil); perr != nil {
 			rt.rollback()
 			return fmt.Errorf("runtime: tool binding for agent %q: %w", ag.ID, perr)
@@ -225,7 +228,7 @@ func (rt *Runtime) Start(ctx context.Context) error {
 
 	// Skill Manager：启动期 all-or-nothing 加载 SKILL.md + Agent binding 校验
 	// （docs/skill/manager.md §3）。baseDir 取自主配置文件目录；未设置时相对 cwd。
-	skm, serr := skill.Load(rt.cfg.Skills, rt.cfg.Agents, tm, rt.skillBaseDir())
+	skm, serr := skill.Load(rt.cfg.Load().Skills, rt.cfg.Load().Agents, tm, rt.skillBaseDir())
 	if serr != nil {
 		rt.rollback()
 		return fmt.Errorf("runtime: load skills: %w", serr)
@@ -238,7 +241,7 @@ func (rt *Runtime) Start(ctx context.Context) error {
 
 	// Agent Manager：冻结 Provider/Tool/Skill allowlist + effective policy。
 	am, aerr := agent.NewManager(agent.Dependencies{
-		Config:    rt.cfg,
+		Config:    rt.cfg.Load(),
 		Reloader:  rt.reloadMgr, // 非 nil 时 Agent turn 从 Current() 取 hot-reload 字段 (行58)
 		Sessions:  nil,          // 先填 nil，下面 Restore+Start 完成后再注入
 		Context:   rt.contextM,
@@ -251,7 +254,7 @@ func (rt *Runtime) Start(ctx context.Context) error {
 	}
 
 	// Session：Restore 失败阻止 Ready（文档：Remote API 不得在 Restore 完成前进入 Ready）。
-	sm := session.NewManager(rt.cfg.Session, rt.store, rt.logger, session.ManagerOptions{
+	sm := session.NewManager(rt.cfg.Load().Session, rt.store, rt.logger, session.ManagerOptions{
 		AgentExists:   rt.agentExists,
 		AgentOverride: rt.agentSessionOverride,
 		ModelExists:   rt.modelExists,
@@ -275,13 +278,13 @@ func (rt *Runtime) Start(ctx context.Context) error {
 	rt.agents = am
 	rt.setComponent("agent", "ready")
 
-	authn, authz, publicPaths, aerr := buildAuth(rt.cfg.Runtime.Auth)
+	authn, authz, publicPaths, aerr := buildAuth(rt.cfg.Load().Runtime.Auth)
 	if aerr != nil {
 		rt.rollback()
 		return aerr
 	}
 
-	rt.api = api.NewServer(rt.cfg.Runtime.API.HTTP.Addr, rt, rt.logger)
+	rt.api = api.NewServer(rt.cfg.Load().Runtime.API.HTTP.Addr, rt, rt.logger)
 	rt.api.SetSessionProvider(sm, rt.agentAPIShim())
 	rt.api.SetAgentProvider(am)
 	rt.api.SetSessionManager(sm)
@@ -290,7 +293,7 @@ func (rt *Runtime) Start(ctx context.Context) error {
 	rt.api.SetSkillManager(rt.skills)
 	rt.api.SetProviderManager(rt.providers)
 	// 注入 Config snapshot 供 GET /api/v1/config 使用 config.RedactedView。
-	rt.api.SetConfigSnapshot(rt.cfg)
+	rt.api.SetConfigSnapshot(rt.cfg.Load())
 	// 在线改配置：ReloadManager 存在时注入（总存在，除非上面构造失败）。
 	if rt.reloadMgr != nil {
 		rt.api.SetReloadManager(rt.reloadMgr)
@@ -303,7 +306,7 @@ func (rt *Runtime) Start(ctx context.Context) error {
 	// v1 起：仅缓存配置以供 List/Get 投影；尚不启动任何上游 Client / 本地 Serve
 	// （docs/mcp/checklist.md §1 lifecycle / transport 留后续 multi-commit）。
 	// 构造失败时启动失败（不应发生在 config 已 Validate 通过的前提下，仅 ErrMCPConfig 兜底）。
-	mcpMgr, mcpErr := mcp.NewManager(&rt.cfg.MCP, rt.tools, rt.logger)
+	mcpMgr, mcpErr := mcp.NewManager(&rt.cfg.Load().MCP, rt.tools, rt.logger)
 	if mcpErr != nil {
 		rt.rollback()
 		return fmt.Errorf("runtime: mcp manager: %w", mcpErr)
@@ -324,7 +327,7 @@ func (rt *Runtime) Start(ctx context.Context) error {
 	// 在 mcpMgr Prepare/Activate 完成 (ServerStatus 快照可读) 后注册;
 	// 与 RegisterBuiltin 分开调用因为 mcpMgr 在 runtime 启动序位于 RegisterBuiltin 之后 (runtime.go §170).
 	// mcpMgr nil (MCP 子系统未启用) 时 RegisterMCPIntrospection 不注册, Get(mcp_list) 返 ErrToolNotFound.
-	if rerr := builtin.RegisterMCPIntrospection(rt.tools, rt.cfg, mcpMgr); rerr != nil {
+	if rerr := builtin.RegisterMCPIntrospection(rt.tools, rt.cfg.Load(), mcpMgr); rerr != nil {
 		rt.rollback()
 		return fmt.Errorf("runtime: register mcp introspection tools: %w", rerr)
 	}
@@ -359,7 +362,7 @@ func (rt *Runtime) Start(ctx context.Context) error {
 	rt.setComponent("api", "ready")
 
 	rt.ready.Store(true)
-	rt.logger.Info("runtime ready", "addr", rt.cfg.Runtime.API.HTTP.Addr, "storage", rt.cfg.Runtime.Storage.Type)
+	rt.logger.Info("runtime ready", "addr", rt.cfg.Load().Runtime.API.HTTP.Addr, "storage", rt.cfg.Load().Runtime.Storage.Type)
 	return nil
 }
 
@@ -415,7 +418,8 @@ func (rt *Runtime) UptimeSeconds() int64 {
 
 // Shutdown 按依赖逆序关闭子系统：先 Not Ready，再 API，最后 Storage。
 func (rt *Runtime) Shutdown(ctx context.Context) error {
-	rt.ready.Store(false) // 先原子标记 Not Ready
+	rt.ready.Store(false)        // 先原子标记 Not Ready
+	rt.shuttingDown.Store(true) // 阻止并发 applyConfig 在半关闭状态执行子系统变更
 	// 与在线改配置的应用管线互斥：关闭期间不交换管理器。
 	rt.managersMu.Lock()
 	defer rt.managersMu.Unlock()
@@ -540,25 +544,29 @@ func changedHas(changed []string, prefixes ...string) bool {
 // agents → auth/session/log。任一通道失败即停并 loud 日志（快照已更新，
 // 读快照的字段先生效；管理器保持旧实例，下次成功应用时追平）。
 // 在途 turn/请求持有旧管理器继续执行，不受影响。
-func (rt *Runtime) applyConfig(old, newCfg *config.Config, changed []string) {
-	rt.cfg = newCfg
+// 若 shuttingDown 已置位则立即返回错误，不执行任何子系统变更。
+func (rt *Runtime) applyConfig(old, newCfg *config.Config, changed []string) error {
+	if rt.shuttingDown.Load() {
+		return fmt.Errorf("runtime: shutting down, applyConfig rejected")
+	}
+	rt.cfg.Store(newCfg)
 	if changedHas(changed, "providers") {
 		if err := rt.providers.Refresh(newCfg.Providers); err != nil {
 			rt.logger.Error("runtime: apply providers failed; keeping previous set", err)
-			return
+			return err
 		}
 	}
 	if changedHas(changed, "tools") {
 		if err := builtin.RefreshBuiltin(rt.tools, newCfg); err != nil {
 			rt.logger.Error("runtime: apply tools failed; keeping previous set", err)
-			return
+			return err
 		}
 	}
 	if changedHas(changed, "skills") {
 		skm, serr := skill.Load(newCfg.Skills, newCfg.Agents, rt.tools, rt.skillBaseDir())
 		if serr != nil {
 			rt.logger.Error("runtime: apply skills failed; keeping previous set", serr)
-			return
+			return serr
 		}
 		rt.managersMu.Lock()
 		rt.skills = skm
@@ -568,14 +576,14 @@ func (rt *Runtime) applyConfig(old, newCfg *config.Config, changed []string) {
 	if changedHas(changed, "agents", "planner") {
 		if err := rt.rebuildAgents(newCfg); err != nil {
 			rt.logger.Error("runtime: apply agents failed; keeping previous set", err)
-			return
+			return err
 		}
 	}
 	if changedHas(changed, "runtime.auth") {
 		authn, authz, publicPaths, aerr := buildAuth(newCfg.Runtime.Auth)
 		if aerr != nil {
 			rt.logger.Error("runtime: apply auth failed; keeping previous set", aerr)
-			return
+			return aerr
 		}
 		if authn != nil {
 			rt.api.SetAuth(true, authn, authz, publicPaths)
@@ -589,10 +597,11 @@ func (rt *Runtime) applyConfig(old, newCfg *config.Config, changed []string) {
 	if changedHas(changed, "log.level") {
 		if err := logging.SetLevel(newCfg.Log.Level); err != nil {
 			rt.logger.Error("runtime: apply log.level failed", err)
-			return
+			return err
 		}
 	}
 	rt.logger.Info("runtime: config applied to live subsystems", "changed", strings.Join(changed, ","))
+	return nil
 }
 
 // rebuildAgents 用新快照重建 Agent Manager 并交换（tools/skills 用当前已
@@ -632,7 +641,7 @@ func (rt *Runtime) rebuildAgents(newCfg *config.Config) error {
 
 // agentExists 判断某 Agent ID 是否在配置中注册。
 func (rt *Runtime) agentExists(agentID string) bool {
-	for _, a := range rt.cfg.Agents {
+	for _, a := range rt.cfg.Load().Agents {
 		if a.ID == agentID {
 			return true
 		}
@@ -642,7 +651,7 @@ func (rt *Runtime) agentExists(agentID string) bool {
 
 // agentSessionOverride 返回某 Agent 的 Session override 配置。
 func (rt *Runtime) agentSessionOverride(agentID string) *config.SessionOverride {
-	for _, a := range rt.cfg.Agents {
+	for _, a := range rt.cfg.Load().Agents {
 		if a.ID == agentID {
 			return a.Session
 		}
@@ -661,7 +670,7 @@ func (rt *Runtime) modelExists(providerID, modelID string) bool {
 
 // agentMemoryOverride 返回某 Agent 的 Memory override（可为 nil）。
 func (rt *Runtime) agentMemoryOverride(agentID string) *config.MemoryOverride {
-	for _, a := range rt.cfg.Agents {
+	for _, a := range rt.cfg.Load().Agents {
 		if a.ID == agentID {
 			return a.Memory
 		}
@@ -679,7 +688,7 @@ func (rt *Runtime) memoryPolicyResolver() api.MemoryPolicyResolver {
 		if !rt.agentExists(agentID) {
 			return config.MemoryPolicy{}, false
 		}
-		return config.ResolveMemoryPolicy(rt.cfg.Memory, rt.agentMemoryOverride(agentID)), true
+		return config.ResolveMemoryPolicy(rt.cfg.Load().Memory, rt.agentMemoryOverride(agentID)), true
 	}
 }
 
@@ -706,7 +715,7 @@ func (rt *Runtime) APIAddr() string {
 	if rt.api != nil {
 		return rt.api.Addr()
 	}
-	return rt.cfg.Runtime.API.HTTP.Addr
+	return rt.cfg.Load().Runtime.API.HTTP.Addr
 }
 
 // setComponent 在锁内更新组件状态, 避免 Start 写入与 Health 读并发竞争.

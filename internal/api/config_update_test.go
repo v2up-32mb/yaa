@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"os"
 	"testing"
 
@@ -118,5 +119,21 @@ agents: []
 		if got != tc.want {
 			t.Errorf("GET %q api_key = %q, want %q", tc.query, got, tc.want)
 		}
+	}
+}
+
+// TestAPIPutConfigApplyErrorReturns500 verifies that when OnApplied returns an
+// error, handlePutConfig reports HTTP 500 with code 50001 instead of 200.
+func TestAPIPutConfigApplyErrorReturns500(t *testing.T) {
+	srv, rm := newConfigTestServer(t, "config_version: \"1.0\"\n")
+	rm.OnApplied = func(old, newCfg *config.Config, changed []string) error {
+		return fmt.Errorf("subsystem rebuild failed")
+	}
+	resp, env := doReq(t, srv, "PUT", "/api/v1/config", map[string]any{
+		"config_version": "1.0",
+		"log":            map[string]any{"level": "debug"},
+	})
+	if resp.StatusCode != 500 || env.Code != 50001 {
+		t.Fatalf("PUT = %d/%d, want 500/50001; body: %+v", resp.StatusCode, env.Code, env)
 	}
 }

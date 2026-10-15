@@ -18,6 +18,9 @@ type ReloadResult struct {
 	Changed         []string `json:"changed"`
 	RestartRequired bool     `json:"restart_required"`
 	Paths           []string `json:"paths"` // 仅 restart-required 路径
+	// ApplyError 非 nil 时表示快照已原子发布但 OnApplied 回调（子系统重建）失败。
+	// Applied 仍为 true（快照已生效），由调用方决定是否上报错误。
+	ApplyError error `json:"-"`
 }
 
 // ReloadManager 是热更新唯一发布入口. docs/config/hot-reload.md §3.
@@ -32,7 +35,8 @@ type ReloadManager struct {
 	// OnApplied 在 Reload()/Update() 成功发布新快照后同步调用
 	// （仍持有 reload 锁：回调不得再调 Reload/Update）。
 	// 用于 Runtime 重建读时子系统（providers/agents/skills/tools…）。
-	OnApplied func(old, new *Config, changed []string)
+	// 返回非 nil 错误时存入 ReloadResult.ApplyError 供调用方处理。
+	OnApplied func(old, new *Config, changed []string) error
 }
 
 // NewReloadManager 拒绝 nil, 立即保存已通过基础校验的不可变 initial snapshot.
@@ -127,10 +131,11 @@ func (m *ReloadManager) Reload() (ReloadResult, error) {
 			m.logger.Info("config reloaded",
 				slog.String("changed", strings.Join(changed, ",")))
 		}
+		var applyErr error
 		if m.OnApplied != nil {
-			m.OnApplied(oldSnap, candidate, changed)
+			applyErr = m.OnApplied(oldSnap, candidate, changed)
 		}
-		return ReloadResult{Applied: true, Changed: changed}, nil
+		return ReloadResult{Applied: true, Changed: changed, ApplyError: applyErr}, nil
 	}
 	// restart-required: 不调用 Store, 返回 Applied=false + RestartRequired=true
 	m.logger.Info("config reload requires restart",
@@ -234,10 +239,11 @@ func (m *ReloadManager) Update(raw map[string]any) (ReloadResult, error) {
 			m.logger.Info("config updated",
 				slog.String("changed", strings.Join(changed, ",")))
 		}
+		var applyErr error
 		if m.OnApplied != nil {
-			m.OnApplied(oldSnap, candidate, changed)
+			applyErr = m.OnApplied(oldSnap, candidate, changed)
 		}
-		return ReloadResult{Applied: true, Changed: changed}, nil
+		return ReloadResult{Applied: true, Changed: changed, ApplyError: applyErr}, nil
 	}
 	m.logger.Info("config update requires restart",
 		slog.String("paths", strings.Join(restartPaths, ",")))
