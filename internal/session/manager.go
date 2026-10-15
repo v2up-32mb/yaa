@@ -20,6 +20,11 @@ import (
 // 早期リターンしたことを示すセンチネル。後続の重入呼び出しも同エラーを返す。
 var ErrShutdownIncomplete = errors.New("session: shutdown incomplete: runner goroutines still running")
 
+// toolReleaser 是释放工具并发信号量的外部接口，使用接口类型避免循环依赖。
+type toolReleaser interface {
+	ReleaseSession(sessionID string)
+}
+
 // Manager は Session 管理器，负责状态机、消息历史、持久化、恢复和并发串行。
 type Manager struct {
 	cfg    config.SessionConfig
@@ -43,6 +48,9 @@ type Manager struct {
 	hubs        map[string]*Hub
 	activeTurns map[string]map[string]*turnControl // sessionID -> turnID -> control
 
+	// toolReleaser 在 Session 删除时释放其持有的工具并发信号量；nil 表示跳过。
+	toolReleaser toolReleaser
+
 	// metrics 持有 10 个 session 指标; nil -> nop (docs/session/observability.md §2).
 	metrics *sessionMetrics
 
@@ -65,6 +73,9 @@ type ManagerOptions struct {
 	AgentExists   func(agentID string) bool
 	// ModelExists 校验会话级 provider/model 覆盖；nil 表示跳过存在性校验。
 	ModelExists func(provider, model string) bool
+	// ToolReleaser 在 Session 删除时释放其持有的工具并发信号量。
+	// nil 表示跳过（兼容未注入工具管理器的测试或部署场景）。
+	ToolReleaser interface{ ReleaseSession(sessionID string) }
 }
 
 // turnControl 保存单个在途 turn 的取消句柄。
@@ -111,6 +122,7 @@ func newManagerWith(cfg config.SessionConfig, store storage.Storage, logger *slo
 		agentOverride: opts.AgentOverride,
 		agentExists:   opts.AgentExists,
 		modelExists:   opts.ModelExists,
+		toolReleaser:  opts.ToolReleaser,
 		sessions:      map[string]*Session{},
 		agentIdx:      map[string]map[string]struct{}{},
 		runners:       map[string]*runner{},

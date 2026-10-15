@@ -654,3 +654,70 @@ func TestShutdownIncompleteOnTimeout(t *testing.T) {
 		t.Fatalf("expected nil or ErrShutdownIncomplete after turn release, got %v", err3)
 	}
 }
+
+// mockToolReleaser 记录 ReleaseSession 调用，用于验证 Delete 触发 toolReleaser。
+type mockToolReleaser struct {
+	mu      sync.Mutex
+	calledWith []string
+}
+
+func (mr *mockToolReleaser) ReleaseSession(sessionID string) {
+	mr.mu.Lock()
+	defer mr.mu.Unlock()
+	mr.calledWith = append(mr.calledWith, sessionID)
+}
+
+func (mr *mockToolReleaser) calls() []string {
+	mr.mu.Lock()
+	defer mr.mu.Unlock()
+	out := make([]string, len(mr.calledWith))
+	copy(out, mr.calledWith)
+	return out
+}
+
+// TestDeleteReleasesToolSession 验证 Delete 后 toolReleaser.ReleaseSession 被调用恰好一次。
+func TestDeleteReleasesToolSession(t *testing.T) {
+	store, err := storage.NewMemory(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.SessionConfig{
+		MaxMessages:         100,
+		MaxMessageBytes:     1024 * 1024,
+		TTL:                 24 * time.Hour,
+		MaxLifetime:         720 * time.Hour,
+		Persist:             true,
+		MaxSessionsPerAgent: 5,
+		CleanupInterval:     time.Minute,
+	}
+	clock := newFakeClock()
+	mock := &mockToolReleaser{}
+	m := newManagerWith(cfg, store, nil, clock, newULIDGen(), ManagerOptions{
+		ToolReleaser: mock,
+	})
+	if err := m.Restore(context.Background(), clock.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = m.Shutdown(context.Background()) })
+
+	ctx := context.Background()
+	s, err := m.Create(ctx, CreateRequest{AgentID: "agent-a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := m.Delete(ctx, s.ID); err != nil {
+		t.Fatalf("Delete failed: %v", err)
+	}
+
+	got := mock.calls()
+	if len(got) != 1 {
+		t.Fatalf("expected ReleaseSession called once, got %d call(s): %v", len(got), got)
+	}
+	if got[0] != s.ID {
+		t.Fatalf("expected ReleaseSession(%q), got %q", s.ID, got[0])
+	}
+}

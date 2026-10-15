@@ -428,5 +428,9 @@ func (m *Manager) runInSessionWithinDelete(ctx context.Context, sessionID string
 	if rr == r {
 		<-r.done
 	}
+	// 不持锁调用外部接口，避免潜在死锁。
+	if err == nil && m.toolReleaser != nil {
+		m.toolReleaser.ReleaseSession(sessionID)
+	}
 	return err
 }
