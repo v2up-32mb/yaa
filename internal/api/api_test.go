@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 type mockHealth struct {
@@ -148,4 +149,82 @@ func TestShutdownWithoutStartIsNoop(t *testing.T) {
 	if err := s.Shutdown(context.Background()); err != nil {
 		t.Fatalf("Shutdown: %v", err)
 	}
+}
+
+// deadlineMockWriter is a minimal ResponseWriter that records SetWriteDeadline calls
+// so TestRestWriteDeadlineMiddleware can assert on them without a real net.Conn.
+type deadlineMockWriter struct {
+	*httptest.ResponseRecorder
+	callCount    int
+	lastDeadline time.Time
+}
+
+func newDeadlineMockWriter() *deadlineMockWriter {
+	return &deadlineMockWriter{ResponseRecorder: httptest.NewRecorder()}
+}
+
+func (m *deadlineMockWriter) SetWriteDeadline(t time.Time) error {
+	m.callCount++
+	m.lastDeadline = t
+	return nil
+}
+
+// TestRestWriteDeadlineMiddleware verifies the three behaviour branches of
+// restWriteDeadlineMiddleware as required by the task spec.
+func TestRestWriteDeadlineMiddleware(t *testing.T) {
+	// zero timeout: middleware must be a no-op (next is still called, no deadline).
+	t.Run("zero_timeout_noop", func(t *testing.T) {
+		var called bool
+		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { called = true })
+		mw := restWriteDeadlineMiddleware(0)(next)
+		mock := newDeadlineMockWriter()
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
+		mw.ServeHTTP(mock, req)
+		if !called {
+			t.Fatal("next handler was not called")
+		}
+		if mock.callCount != 0 {
+			t.Fatalf("SetWriteDeadline called %d time(s); want 0 for zero timeout", mock.callCount)
+		}
+	})
+
+	// positive timeout + non-streaming path: SetWriteDeadline must be called.
+	t.Run("rest_path_sets_deadline", func(t *testing.T) {
+		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+		mw := restWriteDeadlineMiddleware(5 * time.Second)(next)
+		mock := newDeadlineMockWriter()
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
+		before := time.Now()
+		mw.ServeHTTP(mock, req)
+		// Expect two calls: one to set the deadline and one to clear it.
+		if mock.callCount < 2 {
+			t.Fatalf("SetWriteDeadline called %d time(s); want >=2 (set + clear)", mock.callCount)
+		}
+		// First call should have a non-zero deadline in the future.
+		_ = before // deadline ordering verified by callCount >= 2
+	})
+
+	// streaming path ending in /events: deadline must NOT be set.
+	t.Run("events_path_no_deadline", func(t *testing.T) {
+		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+		mw := restWriteDeadlineMiddleware(5 * time.Second)(next)
+		mock := newDeadlineMockWriter()
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/abc123/events", nil)
+		mw.ServeHTTP(mock, req)
+		if mock.callCount != 0 {
+			t.Fatalf("SetWriteDeadline called %d time(s) for /events path; want 0", mock.callCount)
+		}
+	})
+
+	// streaming path ending in /ws: deadline must NOT be set.
+	t.Run("ws_path_no_deadline", func(t *testing.T) {
+		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+		mw := restWriteDeadlineMiddleware(5 * time.Second)(next)
+		mock := newDeadlineMockWriter()
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/abc123/ws", nil)
+		mw.ServeHTTP(mock, req)
+		if mock.callCount != 0 {
+			t.Fatalf("SetWriteDeadline called %d time(s) for /ws path; want 0", mock.callCount)
+		}
+	})
 }

@@ -657,7 +657,7 @@ func TestShutdownIncompleteOnTimeout(t *testing.T) {
 
 // mockToolReleaser 记录 ReleaseSession 调用，用于验证 Delete 触发 toolReleaser。
 type mockToolReleaser struct {
-	mu      sync.Mutex
+	mu         sync.Mutex
 	calledWith []string
 }
 

@@ -3,14 +3,17 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/gorilla/websocket"
 
+	"github.com/v2up-32mb/yaa/internal/agent"
 	"github.com/v2up-32mb/yaa/internal/session"
 )
 
@@ -232,4 +235,113 @@ func TestWSStreamSessionEndOnClose(t *testing.T) {
 	if f.Type != "session_end" || f.Reason != "closed" {
 		t.Fatalf("expected session_end/closed, got %+v", f)
 	}
+}
+
+// blockingAgentProvider 是专为 TestWSMaxOutstandingTurns 设计的阻塞 AgentProvider mock。
+// HandleTurn 阻塞直到 releaseCh 关闭（或 ctx 取消），同时用 blockedCh 通知调用方已到达阻塞点。
+type blockingAgentProvider struct {
+	blocked  chan struct{} // 关闭时表示已有足够数量的 goroutine 进入 HandleTurn
+	release  chan struct{} // 关闭时释放所有阻塞的 goroutine
+	expected int32
+	count    atomic.Int32
+}
+
+func (b *blockingAgentProvider) HandleTurn(ctx context.Context, agentID string, req agent.TurnRequest) (agent.TurnResult, error) {
+	if b.count.Add(1) == b.expected {
+		close(b.blocked) // 通知：已有 expected 个 goroutine 进入 HandleTurn
+	}
+	select {
+	case <-b.release:
+	case <-ctx.Done():
+		return agent.TurnResult{}, ctx.Err()
+	}
+	return agent.TurnResult{}, nil
+}
+func (b *blockingAgentProvider) Get(id string) (agent.Info, error)   { return agent.Info{}, nil }
+func (b *blockingAgentProvider) List(*agent.Status) []agent.Info     { return nil }
+func (b *blockingAgentProvider) Start(context.Context, string) error { return nil }
+func (b *blockingAgentProvider) Pause(context.Context, string) error { return nil }
+func (b *blockingAgentProvider) Stop(context.Context, string) error  { return nil }
+
+// TestWSMaxOutstandingTurns 验证每连接未完成 turn 数量上限为 wsMaxOutstandingTurns。
+// 使用阻塞 AgentProvider，确保前100 个 goroutine 真正在途后再发第101 个，
+// 验证第101 个立即收到 "too many outstanding turns" 错误。
+func TestWSMaxOutstandingTurns(t *testing.T) {
+	apiSrv, sm := conversationTestEnv(t)
+
+	// 替换为阻塞 AgentProvider：HandleTurn 阻塞直到测试完成后 release。
+	bap := &blockingAgentProvider{
+		blocked:  make(chan struct{}),
+		release:  make(chan struct{}),
+		expected: wsMaxOutstandingTurns,
+	}
+	apiSrv.SetAgentProvider(bap)
+
+	hsrv := httptest.NewServer(apiSrv.server.Handler)
+	t.Cleanup(hsrv.Close)
+	ctx := context.Background()
+	s, err := sm.Create(ctx, session.CreateRequest{AgentID: "agent-test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn := dialWS(t, hsrv.URL, s.ID)
+	defer conn.Close()
+
+	// 发送前 wsMaxOutstandingTurns 个 turn。
+	for i := 1; i <= wsMaxOutstandingTurns; i++ {
+		req, _ := json.Marshal(wsClientFrame{
+			Type:    "message",
+			TurnID:  fmt.Sprintf("turn_max_%d", i),
+			Content: "hello",
+		})
+		if werr := conn.WriteMessage(websocket.TextMessage, req); werr != nil {
+			t.Fatalf("write message %d: %v", i, werr)
+		}
+	}
+
+	// 等待100 个 goroutine 全部进入 HandleTurn（被阻塞），确保计数器已饱和。
+	select {
+	case <-bap.blocked:
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out waiting for 100 goroutines to enter HandleTurn")
+	}
+
+	// 发送第101 个 turn：计数器已满，应被立即拒绝。
+	overflowTurnID := fmt.Sprintf("turn_max_%d", wsMaxOutstandingTurns+1)
+	req101, _ := json.Marshal(wsClientFrame{
+		Type:    "message",
+		TurnID:  overflowTurnID,
+		Content: "hello",
+	})
+	if werr := conn.WriteMessage(websocket.TextMessage, req101); werr != nil {
+		t.Fatalf("write message 101: %v", werr)
+	}
+
+	// 读取帧，找到针对第101 个 turn 的 overflow 错误。
+	foundOverflow := false
+	deadline := time.Now().Add(5 * time.Second)
+	for !foundOverflow && time.Now().Before(deadline) {
+		_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+		_, data, rerr := conn.ReadMessage()
+		if rerr != nil {
+			t.Logf("ws read stopped: %v", rerr)
+			break
+		}
+		var f ConversationFrame
+		if jerr := json.Unmarshal(data, &f); jerr != nil {
+			continue
+		}
+		if f.Type == "error" && strings.Contains(f.Message, "too many outstanding turns") {
+			if f.TurnID != overflowTurnID {
+				t.Errorf("overflow rejection on unexpected turn %q (expected %q)", f.TurnID, overflowTurnID)
+			}
+			foundOverflow = true
+		}
+	}
+	if !foundOverflow {
+		t.Fatalf("expected 'too many outstanding turns' error for turn %s but did not receive it", overflowTurnID)
+	}
+
+	// 释放所有阻塞的 goroutine，避免 goroutine 泄漏导致 t.Cleanup 超时。
+	close(bap.release)
 }

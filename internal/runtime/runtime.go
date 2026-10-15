@@ -258,6 +258,7 @@ func (rt *Runtime) Start(ctx context.Context) error {
 		AgentExists:   rt.agentExists,
 		AgentOverride: rt.agentSessionOverride,
 		ModelExists:   rt.modelExists,
+		ToolReleaser:  rt.tools,
 	})
 	if rerr := sm.Restore(ctx, time.Now().UTC()); rerr != nil {
 		rt.rollback()

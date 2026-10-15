@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -17,10 +18,11 @@ import (
 
 // turns 按 turnID 跟踪在途 turn，cancel 路径据此定位 HandleTurn 的 ctx。
 const (
-	wsReadLimit = 1 << 20 // 1 MiB
-	wsWriteWait = 10 * time.Second
-	wsPingEvery = 30 * time.Second
-	wsReadIdle  = 120 * time.Second
+	wsReadLimit           = 1 << 20 // 1 MiB
+	wsWriteWait           = 10 * time.Second
+	wsPingEvery           = 30 * time.Second
+	wsReadIdle            = 120 * time.Second
+	wsMaxOutstandingTurns = 100 // 每连接最多 100 个未完成 turn，防止 goroutine/内存耗尽。
 )
 
 var wsUpgrader = websocket.Upgrader{
@@ -123,8 +125,9 @@ type wsConn struct {
 	hub        *session.Hub
 	sub        *session.Subscriber
 
-	turnsMu sync.Mutex
-	turns   map[string]context.CancelFunc // turnID -> cancel 本连接发起的 turn
+	turnsMu          sync.Mutex
+	turns            map[string]context.CancelFunc // turnID -> cancel 本连接发起的 turn
+	outstandingTurns atomic.Int32                  // 当前未完成 turn 数量（原子操作）。
 }
 
 // run 在 conn 生命周期内同时跑 writer(reader-driven + hub-pump) 与 reader。
@@ -209,6 +212,13 @@ func (w *wsConn) handleMessage(parent context.Context, f wsClientFrame) {
 		return
 	}
 
+	// 限制每连接未完成 turn 数，防止客户端快速发送大量 turn ID 耗尽 goroutine/内存。
+	if cur := w.outstandingTurns.Add(1); cur > wsMaxOutstandingTurns {
+		w.outstandingTurns.Add(-1)
+		w.sendError(f.TurnID, "40001", "too many outstanding turns")
+		return
+	}
+
 	// turnID 重复检查与注册必须在同一临界区, 避免并发同 ID frame 互相覆盖 cancel.
 	w.turnsMu.Lock()
 	if _, dup := w.turns[f.TurnID]; dup {
@@ -224,6 +234,7 @@ func (w *wsConn) handleMessage(parent context.Context, f wsClientFrame) {
 		w.turnsMu.Lock()
 		delete(w.turns, f.TurnID)
 		w.turnsMu.Unlock()
+		w.outstandingTurns.Add(-1)
 	}()
 
 	req := agent.TurnRequest{

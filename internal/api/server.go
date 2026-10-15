@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"runtime/debug"
+	"strings"
 	"sync"
 	"time"
 
@@ -242,6 +243,38 @@ func (s *Server) methodNotAllowed(w http.ResponseWriter, r *http.Request) {
 	s.writeError(w, r, http.StatusMethodNotAllowed, 40501, "method not allowed")
 }
 
+// restWriteDeadlineMiddleware returns a middleware that sets a per-request
+// write deadline on non-streaming routes.
+//
+// Streaming routes are identified by path suffix: paths ending in "/events"
+// (SSE) or "/ws" (WebSocket) are skipped so long-lived connections are not
+// prematurely terminated.
+//
+// If timeout <= 0 the middleware is a no-op. After the inner handler returns
+// the deadline is cleared (zero Time) so keep-alive connections reused for
+// a later request are not affected.
+func restWriteDeadlineMiddleware(timeout time.Duration) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if timeout <= 0 {
+				next.ServeHTTP(w, r)
+				return
+			}
+			// Skip streaming routes: SSE (/events) and WebSocket (/ws).
+			path := r.URL.Path
+			if strings.HasSuffix(path, "/events") || strings.HasSuffix(path, "/ws") {
+				next.ServeHTTP(w, r)
+				return
+			}
+			rc := http.NewResponseController(w)
+			_ = rc.SetWriteDeadline(time.Now().Add(timeout))
+			next.ServeHTTP(w, r)
+			// Clear deadline so reused keep-alive connections start clean.
+			_ = rc.SetWriteDeadline(time.Time{})
+		})
+	}
+}
+
 // Start 同步启动 HTTP 监听并在后台阻塞 serve。
 func (s *Server) Start(ctx context.Context) error {
 	s.mu.Lock()
@@ -253,10 +286,14 @@ func (s *Server) Start(ctx context.Context) error {
 	// 接入配置的 HTTP 超时和 Header 限制。cfgSnapshot 在 runtime.Start 注入；未注入时保持零值（无限制）。
 	// WriteTimeout 设为 0：SSE/WS 是长连接流式响应，全局写超时会提前断开合法连接；
 	// 单次截止时间由各 handler 通过 http.ResponseController 或 conn.SetWriteDeadline 自行管理。
+	// 非流式 REST 路由通过 restWriteDeadlineMiddleware 逐请求设置写截止时间。
 	if cfg := s.cfgSnapshot; cfg != nil {
 		s.server.ReadTimeout = cfg.Runtime.API.HTTP.ReadTimeout
 		s.server.WriteTimeout = 0
 		s.server.MaxHeaderBytes = cfg.Runtime.API.HTTP.MaxHeaderBytes
+		if cfg.Runtime.API.HTTP.WriteTimeout > 0 {
+			s.server.Handler = restWriteDeadlineMiddleware(cfg.Runtime.API.HTTP.WriteTimeout)(s.server.Handler)
+		}
 	}
 	ln, err := net.Listen("tcp", s.addr)
 	if err != nil {
