@@ -47,20 +47,8 @@ func (m *Manager) RunTurn(
 		return fmt.Errorf("%w: session %s", ErrSessionNotFound, sessionID)
 	}
 
-	// 在 activeTurns 预留 turnID；重复则拒绝不入队。
-	m.mu.Lock()
-	turns := m.activeTurns[sessionID]
-	if turns == nil {
-		turns = map[string]*turnControl{}
-		m.activeTurns[sessionID] = turns
-	}
-	if _, ok := turns[turnID]; ok {
-		m.mu.Unlock()
-		return fmt.Errorf("%w: %s", ErrTurnIDConflict, turnID)
-	}
-	position := len(turns) // 接受时前方任务数（运行+排队）
-	m.mu.Unlock()
-
+	// 在单一临界区内完成：closed 检查 + ID 冲突检查 + tc 构造 + activeTurns 写入。
+	// 消除两段加锁之间的竞态窗口（trial53 复现：512 并发同ID 有129个成功）。
 	turnCtx, cancel := context.WithCancelCause(ctx)
 	tc := &turnControl{
 		agentID: sess.AgentID,
@@ -69,13 +57,25 @@ func (m *Manager) RunTurn(
 		done:    make(chan struct{}),
 	}
 
+	var position int
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
 		cancel(context.Canceled)
 		return ErrManagerClosed
 	}
-	m.activeTurns[sessionID][turnID] = tc
+	turns := m.activeTurns[sessionID]
+	if turns == nil {
+		turns = map[string]*turnControl{}
+		m.activeTurns[sessionID] = turns
+	}
+	if _, ok := turns[turnID]; ok {
+		m.mu.Unlock()
+		cancel(context.Canceled)
+		return fmt.Errorf("%w: %s", ErrTurnIDConflict, turnID)
+	}
+	position = len(turns) // 接受时前方任务数（运行+排队）
+	turns[turnID] = tc
 	m.mu.Unlock()
 
 	// onQueued 在所有 Manager/runner 锁外调用。
@@ -96,7 +96,8 @@ func (m *Manager) RunTurn(
 	defer func() {
 		close(tc.done)
 		m.mu.Lock()
-		if activeMap := m.activeTurns[sessionID]; activeMap != nil {
+		// 只在 map 中存的仍是本次 tc 指针时才删除，防止误删后续同 ID 调用的条目。
+		if activeMap := m.activeTurns[sessionID]; activeMap != nil && activeMap[turnID] == tc {
 			delete(activeMap, turnID)
 		}
 		m.mu.Unlock()

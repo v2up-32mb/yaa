@@ -31,7 +31,10 @@ const (
 )
 
 // ProcessEntry 一个被管理后台进程。
+// mu 保护 State 和 ExitErr 字段的并发读写；锁顺序：先持有 ProcessManager.mu 取得
+// entry 指针，再对 entry.mu 加锁，不得颠倒。
 type ProcessEntry struct {
+	mu      sync.RWMutex `json:"-"`
 	ID      string       `json:"id"`
 	State   ProcessState `json:"state"`
 	PID     int          `json:"pid"`
@@ -229,7 +232,10 @@ func (p *ProcessTool) start(params map[string]any) (tool.ToolResult, error) {
 	go func() {
 		err := cmd.Wait()
 		p.manager.mu.Lock()
-		if cur, ok := p.manager.procs[entry.ID]; ok && cur == mp {
+		cur, ok := p.manager.procs[entry.ID]
+		p.manager.mu.Unlock()
+		if ok && cur == mp {
+			entry.mu.Lock()
 			if err != nil && entry.State == ProcessRunning {
 				entry.State = ProcessExited
 				if ee, ok := err.(*exec.ExitError); ok {
@@ -238,8 +244,8 @@ func (p *ProcessTool) start(params map[string]any) (tool.ToolResult, error) {
 					entry.ExitErr = err.Error()
 				}
 			}
+			entry.mu.Unlock()
 		}
-		p.manager.mu.Unlock()
 		close(mp.done)
 	}()
 
@@ -248,18 +254,28 @@ func (p *ProcessTool) start(params map[string]any) (tool.ToolResult, error) {
 
 func (p *ProcessTool) list() (tool.ToolResult, error) {
 	p.manager.mu.Lock()
-	defer p.manager.mu.Unlock()
 	ids := make([]string, 0, len(p.manager.procs))
+	entries := make([]*ProcessEntry, 0, len(p.manager.procs))
 	for id := range p.manager.procs {
 		ids = append(ids, id)
+		entries = append(entries, p.manager.procs[id].entry)
 	}
+	p.manager.mu.Unlock()
 	sortStrings(ids)
+	// Build index from sorted ids back to entries.
+	entryByID := make(map[string]*ProcessEntry, len(ids))
+	for i, id := range ids {
+		entryByID[id] = entries[i]
+	}
 	var b strings.Builder
 	for _, id := range ids {
-		e := p.manager.procs[id].entry
-		fmt.Fprintf(&b, "%s\t%s\tpid=%d\t%s\n", e.ID, e.State, e.PID, e.Command)
-		if e.ExitErr != "" {
-			fmt.Fprintf(&b, "  %s\n", e.ExitErr)
+		e := entryByID[id]
+		e.mu.RLock()
+		state, exitErr := e.State, e.ExitErr
+		e.mu.RUnlock()
+		fmt.Fprintf(&b, "%s\t%s\tpid=%d\t%s\n", e.ID, state, e.PID, e.Command)
+		if exitErr != "" {
+			fmt.Fprintf(&b, "  %s\n", exitErr)
 		}
 	}
 	return tool.ToolResult{Content: b.String(), IsError: false}, nil
@@ -293,12 +309,13 @@ func (p *ProcessTool) stop(ctx context.Context, params map[string]any) (tool.Too
 		return tool.ToolResult{Content: "process not found: " + id, IsError: true}, nil
 	}
 
-	p.manager.mu.Lock()
 	entry := mp.entry
-	p.manager.mu.Unlock()
+	entry.mu.RLock()
+	state := entry.State
+	entry.mu.RUnlock()
 
-	if entry.State == ProcessExited || entry.State == ProcessStopped {
-		return tool.ToolResult{Content: fmt.Sprintf("process %s already %s", id, entry.State), IsError: false}, nil
+	if state == ProcessExited || state == ProcessStopped {
+		return tool.ToolResult{Content: fmt.Sprintf("process %s already %s", id, state), IsError: false}, nil
 	}
 
 	if err := stopProcess(mp.cmd, force); err != nil {
@@ -311,9 +328,9 @@ func (p *ProcessTool) stop(ctx context.Context, params map[string]any) (tool.Too
 	case <-time.After(12 * time.Second):
 		return tool.ToolResult{Content: "stop timed out waiting for process", IsError: true}, nil
 	}
-	p.manager.mu.Lock()
+	entry.mu.Lock()
 	entry.State = ProcessStopped
-	p.manager.mu.Unlock()
+	entry.mu.Unlock()
 	return tool.ToolResult{Content: fmt.Sprintf("process %s stopped", id), IsError: false}, nil
 }
 
@@ -322,7 +339,10 @@ func (p *ProcessTool) removeExited() {
 	p.manager.mu.Lock()
 	defer p.manager.mu.Unlock()
 	for id, mp := range p.manager.procs {
-		if mp.entry.State == ProcessExited || mp.entry.State == ProcessStopped {
+		mp.entry.mu.RLock()
+		state := mp.entry.State
+		mp.entry.mu.RUnlock()
+		if state == ProcessExited || state == ProcessStopped {
 			delete(p.manager.procs, id)
 		}
 	}

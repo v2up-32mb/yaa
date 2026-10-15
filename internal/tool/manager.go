@@ -34,8 +34,8 @@ type Manager struct {
 
 	// 并发Gate
 	global sema
-	// ponytail: per-session gate 懒构造后不清理; 高基数 sessionID 会累积内存.
-	// 升级路径: 由 Session 生命周期事件驱动 ReleaseSession 删除.
+	// sessions 保存每个 Session 的并发信号量，懒构造，高基数 sessionID 会累积内存。
+	// 应在 Session 被销毁时由 Session 生命周期调用 ReleaseSession 释放。
 	sessions map[string]sema
 }
 
@@ -510,6 +510,14 @@ func (m *Manager) sessGate(sessionID string) sema {
 	sg := newSema(n)
 	m.sessions[sessionID] = sg
 	return sg
+}
+
+// ReleaseSession 释放某 Session 的并发信号量记录。应在 Session 被销毁且无并发
+// 工具调用时由 Session 生命周期调用，避免 sessions map 无限累积内存。
+func (m *Manager) ReleaseSession(sessionID string) {
+	m.mu.Lock()
+	delete(m.sessions, sessionID)
+	m.mu.Unlock()
 }
 
 // truncateResult 使用 Agent Provider 的 token estimator 将 Content 估算并截断到 MaxResultTokens.

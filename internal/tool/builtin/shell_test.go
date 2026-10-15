@@ -68,6 +68,47 @@ func TestShellOutputTruncated(t *testing.T) {
 	}
 }
 
+// TestShellMetacharBlockedWhenAllowlistSet 白名单非空时 shell 元字符被拒绝；空白名单不受限。
+func TestShellMetacharBlockedWhenAllowlistSet(t *testing.T) {
+	cases := []struct {
+		name    string
+		cmd     string
+		wantErr bool
+	}{
+		{"semicolon", "echo a; echo b", true},
+		{"pipe", "echo a | cat", true},
+		{"ampersand", "echo a & echo b", true},
+		{"backtick", "echo `id`", true},
+		{"redirect_out", "echo a > /tmp/x", true},
+		{"redirect_in", "cat < /etc/hosts", true},
+		{"dollar_paren", "echo $(id)", true},
+		{"dollar_brace", "echo ${PATH}", true},
+		{"plain", "echo hello", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// 白名单非空
+			s, _ := NewShell(newShellCfg(map[string]any{"allowed_commands": []any{"echo", "cat"}}))
+			r, err := s.Execute(context.Background(), tool.ExecutionScope{AgentID: "a"}, map[string]any{"command": tc.cmd})
+			if err != nil {
+				t.Fatalf("unexpected exec error: %v", err)
+			}
+			if tc.wantErr && (!r.IsError || r.Content != "command contains shell metacharacters") {
+				t.Fatalf("expected metachar block, got %+v", r)
+			}
+			if !tc.wantErr && r.IsError {
+				t.Fatalf("expected success, got %+v", r)
+			}
+		})
+	}
+	// 空白名单不拦截元字符
+	sEmpty, _ := NewShell(newShellCfg(map[string]any{}))
+	r, _ := sEmpty.Execute(context.Background(), tool.ExecutionScope{AgentID: "a"}, map[string]any{"command": "echo a; echo b"})
+	if r.Content == "command contains shell metacharacters" {
+		t.Fatalf("empty allowlist must not block metachar")
+	}
+}
+
 // TestShellEmptyAllowlistAllows 锁定「空 allowed_commands = 放行」语义：
 // 默认配置（无白名单）下 shell 可直接执行；blocked 仍始终生效。
 func TestShellEmptyAllowlistAllows(t *testing.T) {

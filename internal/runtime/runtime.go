@@ -418,7 +418,7 @@ func (rt *Runtime) UptimeSeconds() int64 {
 
 // Shutdown 按依赖逆序关闭子系统：先 Not Ready，再 API，最后 Storage。
 func (rt *Runtime) Shutdown(ctx context.Context) error {
-	rt.ready.Store(false)        // 先原子标记 Not Ready
+	rt.ready.Store(false)       // 先原子标记 Not Ready
 	rt.shuttingDown.Store(true) // 阻止并发 applyConfig 在半关闭状态执行子系统变更
 	// 与在线改配置的应用管线互斥：关闭期间不交换管理器。
 	rt.managersMu.Lock()

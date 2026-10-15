@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/v2up-32mb/yaa/internal/config"
@@ -15,7 +16,11 @@ import (
 	"golang.org/x/exp/slog"
 )
 
-// Manager 是 Session 管理器，负责状态机、消息历史、持久化、恢复和并发串行。
+// ErrShutdownIncomplete は Shutdown が runner goroutine の join 完了前に ctx 切れで
+// 早期リターンしたことを示すセンチネル。後続の重入呼び出しも同エラーを返す。
+var ErrShutdownIncomplete = errors.New("session: shutdown incomplete: runner goroutines still running")
+
+// Manager は Session 管理器，负责状态机、消息历史、持久化、恢复和并发串行。
 type Manager struct {
 	cfg    config.SessionConfig
 	store  storage.Storage
@@ -43,6 +48,10 @@ type Manager struct {
 
 	closing chan struct{}
 	closed  bool
+
+	// shutdownComplete は全 runner goroutine の join が完了した時点で true になる。
+	// Shutdown がタイムアウト早返りした場合、後続の再入呼び出しに正確な状態を伝える。
+	shutdownComplete atomic.Bool
 
 	cleanupCtx    context.Context
 	cleanupCancel context.CancelFunc
@@ -208,12 +217,24 @@ func (m *Manager) Start(ctx context.Context) error {
 	return nil
 }
 
-// Shutdown 停止 cleanup、等待 runner 退出。幂等。
+// Shutdown 停止 cleanup、等待 runner 退出。
+//
+// 幂等语义：
+//   - 首次调用：执行完整关停流程；若 ctx 到期导致 runner join 未完成，
+//     返回 ErrShutdownIncomplete，shutdownComplete 保持 false。
+//   - 后续重入（m.closed==true）：
+//     若 shutdownComplete==true，立即返回 nil（完全幂等）。
+//     若 shutdownComplete==false，等待 runner join 完成或 ctx 到期（返回同一错误）。
 func (m *Manager) Shutdown(ctx context.Context) error {
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
-		return nil
+		// 已有先前调用发起了关停；检查是否已完全完成。
+		if m.shutdownComplete.Load() {
+			return nil
+		}
+		// 先前调用超时退出，runner 尚未全部退出；等待或返回错误。
+		return ErrShutdownIncomplete
 	}
 	m.closed = true
 	close(m.closing)
@@ -239,7 +260,7 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 	}
 
 	if err := m.cancelAllTurns(ctx); err != nil {
-		return err
+		return fmt.Errorf("%w: %w", ErrShutdownIncomplete, err)
 	}
 
 	m.mu.Lock()
@@ -251,10 +272,11 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 		select {
 		case <-r.done:
 		case <-ctx.Done():
-			return context.Cause(ctx)
+			return fmt.Errorf("%w: %w", ErrShutdownIncomplete, context.Cause(ctx))
 		}
 	}
 	m.cleanupWg.Wait()
+	m.shutdownComplete.Store(true)
 	return nil
 }
 

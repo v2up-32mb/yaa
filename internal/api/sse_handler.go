@@ -32,6 +32,7 @@ func (s *Server) handleSSEEvents(w http.ResponseWriter, r *http.Request, sp Sess
 		return
 	}
 	sub := h.Subscribe()
+	defer h.Unsubscribe(sub)
 
 	// SSE 响应头
 	w.Header().Set("Content-Type", "text/event-stream")

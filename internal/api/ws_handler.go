@@ -88,6 +88,8 @@ func (s *Server) handleWSStream(w http.ResponseWriter, r *http.Request, sp Sessi
 		}
 		return
 	}
+	// 限制单条客户端消息最大为 wsReadLimit（1 MiB），防止超大 frame 导致 OOM。
+	conn.SetReadLimit(wsReadLimit)
 
 	// 连接级 ctx：断开或服务端回写完成都会触发 cancel。
 	connCtx, cancelConn := context.WithCancel(r.Context())
@@ -138,8 +140,9 @@ func (w *wsConn) run(parent context.Context) {
 
 	// 写循环从 hub 订阅者推送 ConversationFrame 到客户端。
 	// 当 reader 因客户端断开退出，cancel 让 writer 在下一次 select 时 select<-ctx.Done() 退出。
+	// writeLoop 退出时（session_end 或 Hub 关闭）也调用 cancel，驱动 readLoop 和 pingLoop 退出。
 	writerDone := make(chan struct{})
-	go w.writeLoop(ctx, writerDone)
+	go w.writeLoop(ctx, cancel, writerDone)
 
 	// 启动定期 ping，避免代理/网关空闲断流；transport 层 ping 不进入 Session 或 SSE。
 	pingDone := make(chan struct{})
@@ -256,8 +259,10 @@ func (w *wsConn) handleCancel(turnID string) {
 }
 
 // writeLoop 把 Hub 上 ConversationFrame 写到 WS；直到 ctx 取消或连接关闭。
-func (w *wsConn) writeLoop(ctx context.Context, done chan<- struct{}) {
+// 退出时调用 cancel，驱动 readLoop 和 pingLoop 退出（session_end 或 Hub 关闭场景）。
+func (w *wsConn) writeLoop(ctx context.Context, cancel context.CancelFunc, done chan<- struct{}) {
 	defer close(done)
+	defer cancel()
 	events := w.sub.Events()
 	for {
 		select {

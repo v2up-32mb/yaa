@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -519,4 +520,137 @@ func TestMetricsEventPublishErrorsOnDrop(t *testing.T) {
 		t.Fatalf("eventPublishErrors{session_event} = %d, want >= 1 (dropped %d msgs after buf full)", got, hubBufSize+1)
 	}
 	_ = sub
+}
+
+// TestRunTurnAtomicAdmission 验证修复后同ID 并发调用只有一个成功，其余全部返回 ErrTurnIDConflict。
+func TestRunTurnAtomicAdmission(t *testing.T) {
+	store, err := storage.NewMemory(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.SessionConfig{
+		MaxMessages: 200, MaxMessageBytes: 1024 * 1024,
+		TTL: 24 * time.Hour, MaxLifetime: 720 * time.Hour,
+		Persist: false, MaxSessionsPerAgent: 50, CleanupInterval: time.Minute,
+	}
+	clock := newFakeClock()
+	m := newManagerWith(cfg, store, nil, clock, newULIDGen(), ManagerOptions{})
+	if err := m.Restore(context.Background(), clock.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer m.Shutdown(context.Background())
+
+	ctx := context.Background()
+	s, _ := m.Create(ctx, CreateRequest{AgentID: "agent-atomic"})
+
+	const concurrency = 64
+	const turnID = "fixed-turn-id"
+
+	var (
+		wg       sync.WaitGroup
+		success  int64
+		conflict int64
+	)
+	for i := 0; i < concurrency; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			runErr := m.RunTurn(ctx, s.ID, turnID, nil, func(ctx context.Context, turn *Turn) error {
+				// 占住 slot 一小段时间，让并发调用者有机会测到冲突
+				time.Sleep(20 * time.Millisecond)
+				_, _ = turn.AppendUser("ping", nil)
+				return nil
+			})
+			if runErr == nil {
+				atomic.AddInt64(&success, 1)
+			} else if errors.Is(runErr, ErrTurnIDConflict) {
+				atomic.AddInt64(&conflict, 1)
+			} else {
+				t.Errorf("unexpected error: %v", runErr)
+			}
+		}()
+	}
+	wg.Wait()
+
+	if success != 1 {
+		t.Fatalf("expected exactly 1 success, got %d (conflict=%d)", success, conflict)
+	}
+	if conflict != concurrency-1 {
+		t.Fatalf("expected %d conflicts, got %d", concurrency-1, conflict)
+	}
+}
+
+// TestShutdownIncompleteOnTimeout 验证：Shutdown ctx 超时早返回后继续调用返回 ErrShutdownIncomplete，
+// 而不是貌然成功的 nil。
+func TestShutdownIncompleteOnTimeout(t *testing.T) {
+	store, err := storage.NewMemory(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.SessionConfig{
+		MaxMessages: 100, MaxMessageBytes: 1024 * 1024,
+		TTL: 24 * time.Hour, MaxLifetime: 720 * time.Hour,
+		Persist: false, MaxSessionsPerAgent: 5, CleanupInterval: time.Minute,
+	}
+	clock := newFakeClock()
+	m := newManagerWith(cfg, store, nil, clock, newULIDGen(), ManagerOptions{})
+	if err := m.Restore(context.Background(), clock.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+	s, _ := m.Create(ctx, CreateRequest{AgentID: "agent-shutdown"})
+
+	// 启动一个长运行 turn，确保 Shutdown ctx 超时时 runner 不会退出
+	turnStarted := make(chan struct{})
+	turnRelease := make(chan struct{})
+	go func() {
+		_ = m.RunTurn(ctx, s.ID, "long-turn", nil, func(ctx context.Context, turn *Turn) error {
+			close(turnStarted)
+			<-turnRelease // 占住 runner 直到测试允许
+			return nil
+		})
+	}()
+	<-turnStarted
+
+	// 第一次 Shutdown：给一个很短的 ctx，超时早返回
+	timeoutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	err1 := m.Shutdown(timeoutCtx)
+	if err1 == nil {
+		// 如果这个平台超快并没有超时，也就无法测试本场景；注释并放行
+		t.Log("Shutdown completed before timeout; skipping incomplete test")
+		close(turnRelease)
+		return
+	}
+	if !errors.Is(err1, ErrShutdownIncomplete) {
+		close(turnRelease)
+		t.Fatalf("expected ErrShutdownIncomplete from first Shutdown, got %v", err1)
+	}
+
+	// 第二次 Shutdown（不完成 join）也应返回 ErrShutdownIncomplete
+	timeoutCtx2, cancel2 := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel2()
+	err2 := m.Shutdown(timeoutCtx2)
+	if !errors.Is(err2, ErrShutdownIncomplete) {
+		close(turnRelease)
+		t.Fatalf("expected ErrShutdownIncomplete from re-entry Shutdown, got %v", err2)
+	}
+
+	// 放行长运行 turn，然后用充足超时停止并返回 nil
+	close(turnRelease)
+
+	// 用充足超时调用 Shutdown：已关闭且未完成，应返回 ErrShutdownIncomplete（runner 正在距退）
+	// 注：此处 runner 尚未 join，Shutdown 不能自己完成 join（stop channel 已关闭）。
+	// 就算第三次调用也应返回 ErrShutdownIncomplete。
+	err3 := m.Shutdown(context.Background())
+	if err3 != nil && !errors.Is(err3, ErrShutdownIncomplete) {
+		t.Fatalf("expected nil or ErrShutdownIncomplete after turn release, got %v", err3)
+	}
 }

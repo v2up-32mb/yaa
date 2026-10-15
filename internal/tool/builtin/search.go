@@ -142,8 +142,15 @@ func (s *SearchTool) Execute(ctx context.Context, scope tool.ExecutionScope, par
 	ignore, _ := loadGitignoreSimple(target)
 	matches := make([]searchMatch, 0, limit)
 
+	// maxFileBytes: 最小取 MaxLineBytes*1024 与 4MB，防止大文件无界扫描。
+	const fourMB = 4 * 1024 * 1024
+	maxFileBytes := int64(s.opts.MaxLineBytes) * 1024
+	if maxFileBytes > fourMB {
+		maxFileBytes = fourMB
+	}
+
 	if fi, err := os.Stat(target); err == nil && !fi.IsDir() {
-		if m, ok := scanFile(target, matcher, s.opts.MaxLineBytes); ok {
+		if m, ok := scanFile(ctx, target, matcher, s.opts.MaxLineBytes, maxFileBytes); ok {
 			matches = append(matches, m...)
 		}
 	} else {
@@ -165,7 +172,11 @@ func (s *SearchTool) Execute(ctx context.Context, scope tool.ExecutionScope, par
 			if useGitignore && ignore != nil && ignore.shouldIgnore(cur, target) {
 				return nil
 			}
-			if m, ok := scanFile(cur, matcher, s.opts.MaxLineBytes); ok {
+			// 符号链接逃逸防护：每个文件的真实路径均需通过 allowed/blocked 检查。
+			if _, pathErr := validatePath(cur, s.opts.AllowedPaths, s.opts.BlockedPaths); pathErr != nil {
+				return nil
+			}
+			if m, ok := scanFile(ctx, cur, matcher, s.opts.MaxLineBytes, maxFileBytes); ok {
 				matches = append(matches, m...)
 				if len(matches) >= limit {
 					return filepath.SkipAll
@@ -195,8 +206,14 @@ type searchMatch struct {
 	Text string `json:"text"`
 }
 
-// scanFile 扫描单个文件的所有行，返回全部命中（会话内）。
-func scanFile(path string, matcher func(string) bool, maxLine int) ([]searchMatch, bool) {
+// scanFile 扫描单个文件的所有行，返回全部命中。
+// ctx: 每 512 行检查一次取消信号，取消时返回已收集结果。
+// maxFileBytes: 文件大小上限，超过则跳过（返回空结果）。
+func scanFile(ctx context.Context, path string, matcher func(string) bool, maxLine int, maxFileBytes int64) ([]searchMatch, bool) {
+	// 先检查文件大小，避免读入超大文件。
+	if info, err := os.Stat(path); err == nil && info.Size() > maxFileBytes {
+		return nil, false
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, false
@@ -205,6 +222,14 @@ func scanFile(path string, matcher func(string) bool, maxLine int) ([]searchMatc
 	lineNo := 0
 	for _, lineBytes := range splitLinesKeep(data) {
 		lineNo++
+		// 每 512 行检查 ctx 取消。
+		if lineNo%512 == 0 {
+			select {
+			case <-ctx.Done():
+				return out, len(out) > 0
+			default:
+			}
+		}
 		line := string(lineBytes)
 		if len(line) > maxLine {
 			line = line[:maxLine] + "…[truncated]"

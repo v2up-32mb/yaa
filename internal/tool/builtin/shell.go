@@ -94,6 +94,10 @@ func (s *ShellTool) Execute(ctx context.Context, scope tool.ExecutionScope, para
 	if len(s.opts.AllowedCommands) > 0 && !s.isAllowed(canon) {
 		return tool.ToolResult{Content: "command not allowed", IsError: true}, nil
 	}
+	// 白名单非空时额外拒绝 shell 元字符，防止 /bin/sh -c 执行拼接命令。
+	if len(s.opts.AllowedCommands) > 0 && containsShellMetachar(command) {
+		return tool.ToolResult{Content: "command contains shell metacharacters", IsError: true}, nil
+	}
 
 	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", command)
 	if s.opts.WorkingDir != "" {
@@ -126,6 +130,22 @@ func (s *ShellTool) Execute(ctx context.Context, scope tool.ExecutionScope, para
 	}
 	_ = scope
 	return tool.ToolResult{Content: content, Meta: map[string]any{"exit_code": 0}}, nil
+}
+
+// containsShellMetachar 检测命令字符串是否含有可组合额外命令的 shell 元字符。
+func containsShellMetachar(cmd string) bool {
+	// ; & | ` $( ${ > < 均可拼接或重定向命令。
+	for _, ch := range cmd {
+		switch ch {
+		case ';', '&', '|', '`', '>', '<':
+			return true
+		}
+	}
+	// $( 和 ${ 命令替换
+	if strings.Contains(cmd, "$(") || strings.Contains(cmd, "${") {
+		return true
+	}
+	return false
 }
 
 func (s *ShellTool) isBlocked(name string) bool {

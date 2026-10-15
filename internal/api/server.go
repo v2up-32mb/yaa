@@ -250,6 +250,14 @@ func (s *Server) Start(ctx context.Context) error {
 		return errors.New("api: server already started")
 	}
 	s.started = time.Now()
+	// 接入配置的 HTTP 超时和 Header 限制。cfgSnapshot 在 runtime.Start 注入；未注入时保持零值（无限制）。
+	// WriteTimeout 设为 0：SSE/WS 是长连接流式响应，全局写超时会提前断开合法连接；
+	// 单次截止时间由各 handler 通过 http.ResponseController 或 conn.SetWriteDeadline 自行管理。
+	if cfg := s.cfgSnapshot; cfg != nil {
+		s.server.ReadTimeout = cfg.Runtime.API.HTTP.ReadTimeout
+		s.server.WriteTimeout = 0
+		s.server.MaxHeaderBytes = cfg.Runtime.API.HTTP.MaxHeaderBytes
+	}
 	ln, err := net.Listen("tcp", s.addr)
 	if err != nil {
 		s.mu.Unlock()
